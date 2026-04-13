@@ -1,0 +1,30 @@
+# Session Lore Spec
+
+## Purpose
+Create callback humor that feels personal and funny without becoming creepy.
+
+## Phase 1
+No session lore logic in core gameplay yet beyond keeping architecture ready.
+
+## Later tracked examples
+- brokeFirstCount
+- peakAura
+- earlyReleaseCount
+- perfectReleaseCount
+- almostHadItCount
+- sabotageCount
+- comebackCount
+- quietWinCount
+
+## Uses
+- round-end labels
+- mini summaries
+- crowd bias
+- spectator-facing callouts
+
+## Rules
+- session-based at first
+- gameplay-relevant only
+- never overlong
+- easy to disable
+- no invasive personal storage
