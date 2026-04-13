@@ -1,48 +1,99 @@
-# Architecture
+# Aura Off
 
-## Goals
-- fast iteration
-- clear modular boundaries
-- future multiplayer support
-- easy tuning
-- low mess
+Aura Off is a Phaser browser game with:
+- single-player mode (existing gameplay loop)
+- minimal private-room multiplayer mode (`2-4` players)
 
-## Core layers
+## Multiplayer Scope
+Implemented intentionally small:
+- private room code / invite link
+- one short round mode
+- instant rematch flow
+- no public lobbies, matchmaking, persistence, progression, cosmetics, or accounts
 
-### Config
-Centralized tuning values and feature flags.
+## Authoritative Boundaries
+Server-authoritative:
+- room membership and host
+- round phase and timer
+- player movement resolution
+- charge state, aura, pressure, break/release decisions
+- winner calculation (highest aura at timer end or last unbroken player)
 
-### Core
-Shared types, utilities, event contracts, math, random helpers.
+Client-authoritative:
+- input capture only
+- presentation (rendering, camera feel, labels, local UX polish)
+- local UI state for hints/errors
 
-### State / Models
-Pure or mostly pure gameplay state containers:
-- aura
-- pressure
-- score
-- session lore
-- run state
+Shared typed contracts:
+- `src/shared/protocol.ts`
 
-### Entities
-Domain objects and local behavior wrappers:
-- player
-- NPCs
-- hazards
+## Local Development
 
-### Systems
-Rules that transform state:
-- aura gain
-- pressure accumulation
-- breaking
-- release payoff
-- NPC reactions
-- round flow
+### 1. Install
+```bash
+npm install
+```
 
-### Presentation
-Phaser scenes, UI widgets, camera effects, particles, sound hooks.
+### 2. Run multiplayer server
+```bash
+npm run dev:server
+```
+Default server: `ws://localhost:8787`
 
-## Important rule
-Do not bury all gameplay rules inside `ArenaScene.ts`.
+### 3. Run browser client
+```bash
+npm run dev
+```
+Default client: `http://localhost:5173`
 
-## Multiplayer readiness principle
-Systems should be written so the important gameplay state can later be driven by authoritative server updates with minimal rewriting.# aura-off
+### 4. Play single-player
+Open:
+```text
+http://localhost:5173
+```
+
+### 5. Play multiplayer
+Host opens:
+```text
+http://localhost:5173/?mode=mp
+```
+or with explicit name/server:
+```text
+http://localhost:5173/?mode=mp&name=Host&ws=ws://localhost:8787
+```
+
+After connect, the room code and invite URL appear in the HUD.
+
+Friend joins with:
+```text
+http://localhost:5173/?mode=mp&room=ABCD&name=Friend&ws=ws://localhost:8787
+```
+
+## Multiplayer Controls
+- `WASD` or arrow keys: move
+- `SPACE` hold: charge
+- `SPACE` release: release action
+- `ENTER`: host starts round
+- `R`: toggle rematch ready in result phase
+
+## Railway Deployment (Multiplayer Server)
+This repo includes:
+- `railway.json`
+- `Procfile`
+
+### Steps
+1. Push this repo to GitHub.
+2. In Railway, create a new project from the repo.
+3. Set service root to repository root.
+4. Railway start command uses:
+   - `npm run start:server`
+5. Set environment variable:
+   - `CLIENT_ORIGIN=https://<your-client-domain>`
+6. Deploy and note the generated backend URL.
+7. Use that backend URL from the client via query param:
+   - `?ws=wss://<your-railway-backend-domain>`
+
+### Notes
+- Server listens on Railway `PORT` automatically.
+- Health check endpoint is `GET /`.
+

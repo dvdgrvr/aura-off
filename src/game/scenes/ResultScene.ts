@@ -67,7 +67,7 @@ export class ResultScene extends Phaser.Scene {
     // Restart prompt
     const promptY = H / 2 + 150;
     const prompt = this.add
-      .text(W / 2, promptY, "[ SPACE ] or [ ENTER ] — Play Again", {
+      .text(W / 2, promptY, "[ SPACE ] or [ R ] — Play Again", {
         fontFamily: "monospace",
         fontSize: "18px",
         color: "#888899",
@@ -87,10 +87,12 @@ export class ResultScene extends Phaser.Scene {
 
     // Input handler
     if (this.input.keyboard) {
-      const restartKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+      const spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
       const enterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
-      restartKey.once("down", () => this._restart());
+      const rKey     = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+      spaceKey.once("down", () => this._restart());
       enterKey.once("down", () => this._restart());
+      rKey.once("down",     () => this._restart());
     }
   }
 

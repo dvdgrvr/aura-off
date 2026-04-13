@@ -15,8 +15,16 @@ const BOUNDS = {
   maxY: ARENA.HEIGHT - ARENA.BORDER - NPC.RADIUS,
 };
 
+/**
+ * Aura fraction above which NPCs freeze and stare instead of wandering.
+ * Below STEP_BACK_AURA_THRESHOLD — they still move, just glance.
+ * At and above this they truly stop and watch.
+ */
+const STARE_AURA_THRESHOLD = 38;
+
 export class NpcCrowdController {
   readonly npcs: Npc[] = [];
+  private prevAura: number = 0;
 
   constructor(scene: Phaser.Scene) {
     for (let i = 0; i < NPC.COUNT; i++) {
@@ -28,74 +36,161 @@ export class NpcCrowdController {
   }
 
   /**
-   * Main update — decides each NPC's reaction based on player aura,
-   * then delegates movement to the NPC.
+   * Main update — reaction decisions driven by player aura.
+   *
+   * Behaviour tiers (ascending aura):
+   *   0–20:  wander freely, ignore player
+   *   20–38: glance and slowly drift toward player (mild clustering)
+   *   38–50: freeze in place, stare at player, slow drift stops
+   *   50+:   step back / flee, maintaining distance
    */
   update(
     playerPos: Vec2,
     playerAura: number,
+    playerPressureNorm: number,
+    playerUnstable: boolean,
     dtSec: number
   ): void {
-    for (const npc of this.npcs) {
-      const dx = npc.x - playerPos.x;
-      const dy = npc.y - playerPos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+    const auraNorm = Phaser.Math.Clamp(playerAura / 100, 0, 1);
+    const auraRisePerSec = (playerAura - this.prevAura) / Math.max(0.0001, dtSec);
+    const auraIsRisingHard = auraRisePerSec > 7.5;
 
-      // ----- Decide reaction -----
+    for (const npc of this.npcs) {
       if (npc.reaction === "dramatic_flee") {
-        // Let dramatic flee play out — it gets reset by triggerDramatic
         npc.dramaticFlee(playerPos, dtSec);
         npc.clampToBounds(BOUNDS);
         continue;
       }
 
-      if (playerAura >= NPC.STEP_BACK_AURA_THRESHOLD) {
+      const dx = npc.x - playerPos.x;
+      const dy = npc.y - playerPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dominantSpaceRadius = NPC.FLEE_DISTANCE + auraNorm * NPC.MAX_EXTRA_SPACE_FROM_AURA;
+
+      if (
+        playerUnstable &&
+        dist < NPC.UNSTABLE_HESITATE_RADIUS &&
+        playerAura >= NPC.GLANCE_AURA_THRESHOLD * 0.8
+      ) {
+        // --- Unstable hesitation ring ---
+        npc.setReaction("stepping_back");
+        npc.facePlayer(playerPos);
+        const intensity = Math.max(0, playerPressureNorm - 0.45);
+        npc.hesitate(dtSec, intensity);
+
+        // Slight retreat if too close, but don't fully flee — this should read as hesitation.
+        if (dist < dominantSpaceRadius * 0.72) {
+          npc.fleeFrom(playerPos, NPC.FLEE_SPEED * 0.55, dtSec);
+        }
+
+      } else if (playerAura >= NPC.DOMINANT_AURA_THRESHOLD) {
+        // --- Flee / step back ---
         npc.setReaction("fleeing");
-        if (dist < NPC.FLEE_DISTANCE) {
-          npc.fleeFrom(playerPos, NPC.FLEE_SPEED, dtSec);
+        if (dist < dominantSpaceRadius) {
+          const speed = NPC.FLEE_SPEED + auraNorm * 150;
+          npc.fleeFrom(playerPos, speed, dtSec);
         } else {
-          npc.updateWander(dtSec, BOUNDS);
+          // Beyond flee distance: stay put and stare
+          // (don't wander — keep the focused feel)
         }
         npc.facePlayer(playerPos);
+
+      } else if (playerAura >= STARE_AURA_THRESHOLD || (auraIsRisingHard && playerAura >= 16)) {
+        // --- Freeze and stare ---
+        // stepping_back gives more visual weight than glancing (stare ring visible)
+        npc.setReaction("stepping_back");
+        npc.facePlayer(playerPos);
+        // Slow drift: only even-ID NPCs creep closer (curious)
+        if (npc.id % 2 === 0 && dist > 140) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          npc.x -= nx * 20 * dtSec;
+          npc.y -= ny * 20 * dtSec;
+          npc.syncGfxPosition();
+        }
+
       } else if (playerAura >= NPC.GLANCE_AURA_THRESHOLD) {
+        // --- Glance while wandering ---
         npc.setReaction("glancing");
         npc.updateWander(dtSec, BOUNDS);
         npc.facePlayer(playerPos);
+
       } else {
+        // --- Wander freely, but low-aura players feel more crowded ---
         npc.setReaction("wandering");
-        npc.updateWander(dtSec, BOUNDS);
+        if (dist > NPC.CROWD_IN_DISTANCE_LOW_AURA && npc.id % 2 === 0) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          npc.x -= nx * 24 * dtSec;
+          npc.y -= ny * 24 * dtSec;
+          npc.syncGfxPosition();
+        } else {
+          npc.updateWander(dtSec, BOUNDS);
+        }
       }
 
       npc.clampToBounds(BOUNDS);
     }
+
+    this.prevAura = playerAura;
   }
 
   /**
-   * Trigger a dramatic crowd reaction (on strong release or break).
-   * NPCs near the player get a dramatic flee; others just flash.
+   * Release dramatic: NPCs scatter in a distance-staggered ripple.
+   * isStrong = true makes them flee wider and harder.
    */
-  triggerDramatic(scene: Phaser.Scene, playerPos: Vec2, radius: number): void {
+  triggerReleaseDramatic(scene: Phaser.Scene, playerPos: Vec2, isStrong: boolean): void {
+    const innerRadius = isStrong ? NPC.RELEASE_STRONG_DRAMATIC_RADIUS : NPC.RELEASE_WEAK_DRAMATIC_RADIUS;
+
     for (const npc of this.npcs) {
       const dx = npc.x - playerPos.x;
       const dy = npc.y - playerPos.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
+      // Stagger reaction outward like a shockwave
+      const delay = isStrong ? (dist / innerRadius) * 180 : 0;
 
-      if (dist < radius) {
-        npc.setReaction("dramatic_flee");
-        npc.flash(scene);
-        // Reset dramatic flag after duration
-        scene.time.delayedCall(NPC.DRAMATIC_FLEE_DURATION_SEC * 1000, () => {
-          if (npc.reaction === "dramatic_flee") {
-            npc.setReaction("wandering");
-          }
-        });
-      } else {
-        npc.flash(scene);
-      }
+      scene.time.delayedCall(delay, () => {
+        if (dist < innerRadius) {
+          npc.setReaction("dramatic_flee");
+          npc.dramaticReact(scene, true);
+          scene.time.delayedCall(NPC.DRAMATIC_FLEE_DURATION_SEC * 1000, () => {
+            if (npc.reaction === "dramatic_flee") npc.setReaction("wandering");
+          });
+        } else if (dist < innerRadius * 1.6) {
+          // Outer ring: stumble in place then recover
+          npc.dramaticReact(scene, false);
+        }
+      });
     }
   }
 
-  /** Returns all NPC positions for system calculations. */
+  /**
+   * Break dramatic: nearby NPCs stumble; feels personal, not stadium-wide.
+   */
+  triggerBreakDramatic(scene: Phaser.Scene, playerPos: Vec2): void {
+    for (const npc of this.npcs) {
+      const dx = npc.x - playerPos.x;
+      const dy = npc.y - playerPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      // Stagger by distance — nearest NPCs react first
+      const delay = Math.min(dist * 0.5, 220);
+
+      scene.time.delayedCall(delay, () => {
+        if (dist < NPC.BREAK_DRAMATIC_RADIUS) {
+          npc.setReaction("stepping_back");
+          npc.stumble(scene);
+          npc.dramaticReact(scene, false);
+          // Hold the reaction longer — "awkward watching" feel
+          scene.time.delayedCall(1800, () => {
+            if (npc.reaction === "stepping_back") npc.setReaction("wandering");
+          });
+        } else if (dist < NPC.BREAK_DRAMATIC_RADIUS * 2.0) {
+          npc.stumble(scene);
+        }
+      });
+    }
+  }
+
   getPositions(): Vec2[] {
     return this.npcs.map((n) => n.getPosition());
   }

@@ -11,6 +11,7 @@ import Phaser from "phaser";
 import { BootScene } from "./game/scenes/BootScene";
 import { PreloadScene } from "./game/scenes/PreloadScene";
 import { ArenaScene } from "./game/scenes/ArenaScene";
+import { MultiplayerArenaScene } from "./game/scenes/MultiplayerArenaScene";
 import { ResultScene } from "./game/scenes/ResultScene";
 
 const config: Phaser.Types.Core.GameConfig = {
@@ -23,12 +24,12 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [BootScene, PreloadScene, ArenaScene, ResultScene],
+  scene: [BootScene, PreloadScene, ArenaScene, MultiplayerArenaScene, ResultScene],
 };
 
 const game = new Phaser.Game(config);
 
 // Expose for debugging in development
 if (import.meta.env.DEV) {
-  (window as Record<string, unknown>).__AURA_OFF__ = game;
+  (window as unknown as Record<string, unknown>).__AURA_OFF__ = game;
 }

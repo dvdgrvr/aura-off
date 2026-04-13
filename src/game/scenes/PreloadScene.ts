@@ -17,6 +17,12 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   create(): void {
+    const params = new URLSearchParams(window.location.search);
+    const mode = (params.get("mode") ?? "").toLowerCase();
+    if (mode === "mp") {
+      this.scene.start("MultiplayerArenaScene");
+      return;
+    }
     this.scene.start('ArenaScene');
   }
 }

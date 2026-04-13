@@ -15,6 +15,7 @@ export type PlayerState =
   | "moving"
   | "charging"
   | "unstable"
+  | "launched"
   | "breaking"
   | "releasing";
 
@@ -36,3 +37,9 @@ export interface RoundResult {
   score: number;
   broke: boolean;
 }
+
+/** Lifecycle phase of any active hazard. */
+export type HazardPhase = "idle" | "telegraph" | "active" | "cooldown";
+
+/** Category of hazard — used for scheduling rules. */
+export type HazardCategory = "core_pressure" | "social_sabotage" | "chaos";
