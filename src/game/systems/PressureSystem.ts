@@ -6,6 +6,7 @@
 import { PRESSURE, ARENA } from "../config/GameConfig";
 import { PressureModel } from "../state/PressureModel";
 import { Vec2 } from "../core/types";
+import Phaser from "phaser";
 
 export class PressureSystem {
   /**
@@ -20,6 +21,7 @@ export class PressureSystem {
     playerPos: Vec2,
     npcPositions: Vec2[],
     isCharging: boolean,
+    movementNorm: number,
     dtSec: number
   ): void {
     // --- NPC contribution ---
@@ -46,8 +48,14 @@ export class PressureSystem {
     }
 
     if (isCharging) {
-      pressure.add((npcPressure + PRESSURE.CHARGE_EXTRA_PER_SEC) * dtSec);
-      pressure.subtract(PRESSURE.DECAY_WHILE_CHARGING_PER_SEC * dtSec);
+      const move = Phaser.Math.Clamp(movementNorm, 0, 1);
+      const uncontrolled = move;
+      const controlled = Phaser.Math.Clamp(1 - move / PRESSURE.CHARGE_CONTROL_THRESHOLD, 0, 1);
+      const movementPenalty = uncontrolled * PRESSURE.CHARGE_MOVEMENT_PENALTY_MAX_PER_SEC;
+      const stillnessRelief = controlled * PRESSURE.CHARGE_STILLNESS_RELIEF_PER_SEC;
+
+      pressure.add((npcPressure + PRESSURE.CHARGE_EXTRA_PER_SEC + movementPenalty) * dtSec);
+      pressure.subtract((PRESSURE.DECAY_WHILE_CHARGING_PER_SEC + stillnessRelief) * dtSec);
     } else {
       pressure.add(npcPressure * dtSec);
       pressure.subtract(PRESSURE.DECAY_PER_SEC * dtSec);

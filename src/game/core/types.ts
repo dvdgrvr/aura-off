@@ -36,6 +36,10 @@ export interface RoundResult {
   releaseAura: number;
   score: number;
   broke: boolean;
+  perfectRelease?: boolean;
+  perfectMultiplier?: number;
+  loreTitle?: string;
+  loreTags?: string[];
 }
 
 /** Lifecycle phase of any active hazard. */

@@ -38,6 +38,7 @@ export class Player {
   private gfx: Phaser.GameObjects.Container;
 
   // Visual layers (back → front)
+  private shadow: Phaser.GameObjects.Ellipse;
   private outerRing: Phaser.GameObjects.Ellipse;
   private dominanceShell: Phaser.GameObjects.Ellipse;
   private auraRing: Phaser.GameObjects.Ellipse;
@@ -77,6 +78,7 @@ export class Player {
   private jitterTimer: number = 0;
   /** Tracks last tier to detect tier transitions for a brief visual pulse. */
   private _lastTierIndex: number = -1;
+  private levitationY: number = 0;
 
   // Bounds
   private readonly minX = ARENA.BORDER + PLAYER.RADIUS;
@@ -91,6 +93,7 @@ export class Player {
 
     const R = PLAYER.RADIUS;
 
+    this.shadow = scene.add.ellipse(0, 0, R * 2.6, R * 1.35, 0x000000, 0.32);
     this.outerRing = scene.add.ellipse(0, 0, R * 10, R * 10, 0x4488ff, 0);
     this.dominanceShell = scene.add.ellipse(0, 0, R * 13, R * 13, 0x88ccff, 0);
     this.auraRing = scene.add.ellipse(0, 0, R * 4.4, R * 4.4, 0x4488ff, 0);
@@ -99,6 +102,7 @@ export class Player {
     this.eyeDot = scene.add.ellipse(R * 0.5, -R * 0.3, 6, 6, 0x111133);
 
     this.gfx = scene.add.container(x, y, [
+      this.shadow,
       this.outerRing,
       this.dominanceShell,
       this.auraRing,
@@ -223,11 +227,32 @@ export class Player {
     auraNorm: number,
     pressureNorm: number,
     tierColorIndex: number,
-    isUnstable: boolean
+    isUnstable: boolean,
+    dangerIntensity: number,
+    criticalIntensity: number
   ): void {
     const ringColor = RING_COLORS[Phaser.Math.Clamp(tierColorIndex, 0, RING_COLORS.length - 1)];
     const tv = TIER_VISUALS[Phaser.Math.Clamp(tierColorIndex, 0, TIER_VISUALS.length - 1)];
     const now = Date.now();
+    const isChargeActive = this._isCharging && this.state !== "releasing";
+    const levitationTarget = isChargeActive
+      ? PLAYER.LEVITATION_BASE_Y +
+        auraNorm * (PLAYER.LEVITATION_MAX_Y - PLAYER.LEVITATION_BASE_Y) +
+        criticalIntensity * 4.5
+      : 0;
+    this.levitationY += (levitationTarget - this.levitationY) * (isChargeActive ? 0.10 : 0.26);
+    const bobSpeed = Phaser.Math.Linear(
+      PLAYER.LEVITATION_BOB_SPEED,
+      PLAYER.LEVITATION_CRITICAL_BOB_SPEED,
+      criticalIntensity
+    );
+    const bobAmp =
+      Phaser.Math.Linear(PLAYER.LEVITATION_BOB_AMPLITUDE, PLAYER.LEVITATION_CRITICAL_BOB_AMPLITUDE, criticalIntensity) *
+      (0.35 + auraNorm * 0.65);
+    const bob = isChargeActive ? Math.sin(now * bobSpeed) * bobAmp : 0;
+    const visualLift = this.levitationY + bob;
+    this._applyVerticalOffsets(visualLift);
+    this._updateShadow(auraNorm, pressureNorm, isUnstable, criticalIntensity);
 
     // Tier transition pulse — brief body flash when crossing into a new tier
     if (this._lastTierIndex !== tierColorIndex) {
@@ -238,7 +263,7 @@ export class Player {
     }
 
     // Outer glow — bigger and faster per tier
-    if (this._isCharging) {
+    if (isChargeActive) {
       const outerPulse = 0.09 + auraNorm * 0.34 + Math.sin(now * tv.pulseSpeed) * 0.10;
       const outerScale = tv.outerScale + auraNorm * 0.55 + Math.sin(now * tv.pulseSpeed * 1.3) * 0.08;
       this.outerRing.setFillStyle(ringColor, outerPulse).setScale(outerScale);
@@ -255,15 +280,21 @@ export class Player {
       .setFillStyle(ringColor, Math.max(0, dominantAlpha))
       .setScale(0.85 + auraNorm * 1.15 + dominantPulse);
 
+    // Pre-break danger tint — visible before unstable chaos starts.
+    if (dangerIntensity > 0 && !isUnstable) {
+      this.outerRing.setFillStyle(0xff6633, 0.12 + dangerIntensity * 0.20);
+      this.dominanceShell.setFillStyle(0xff8855, Math.max(this.dominanceShell.fillAlpha, 0.08 + dangerIntensity * 0.16));
+    }
+
     // Main aura ring — grows meaningfully per tier
-    const ringAlpha = this._isCharging ? 0.44 + auraNorm * 0.50 : auraNorm * 0.36;
+    const ringAlpha = isChargeActive ? 0.44 + auraNorm * 0.50 : auraNorm * 0.36;
     const ringScale = 1 + auraNorm * tv.ringGrow + Math.sin(now * tv.pulseSpeed * 0.9) * 0.05;
     this.auraRing.setFillStyle(ringColor, ringAlpha).setScale(ringScale);
 
     // Body
-    const bodyScale = this._isCharging ? 1.08 + auraNorm * 0.48 : 1.0 + auraNorm * 0.20;
+    const bodyScale = isChargeActive ? 1.08 + auraNorm * 0.48 : 1.0 + auraNorm * 0.20;
     this.body.setScale(bodyScale);
-    this.body.setFillStyle(this._isCharging ? tv.bodyBrightness : 0xccccee);
+    this.body.setFillStyle(isChargeActive ? tv.bodyBrightness : 0xccccee);
 
     // Unstable flicker + jitter — escalates hard with pressure
     if (isUnstable) {
@@ -275,7 +306,7 @@ export class Player {
       const unstableScale = 1.05 + Math.sin(now * (0.020 + danger * 0.020)) * (0.18 + danger * 0.20);
       this.unstableOverlay
         .setFillStyle(0xff2222, Math.min(0.95, flicker))
-        .setScale(unstableScale);
+        .setScale(unstableScale + criticalIntensity * 0.35);
       this.outerRing.setFillStyle(0xff5544, 0.18 + danger * 0.30);
       this.dominanceShell.setFillStyle(0xff3333, Math.max(0.10, this.dominanceShell.fillAlpha * 0.85));
       this.body.setFillStyle(Phaser.Display.Color.GetColor(255, 220 - danger * 80, 220 - danger * 120));
@@ -291,13 +322,43 @@ export class Player {
         this.jitterTimer = 0.018 + (1 - danger) * 0.022; // shorter interval = faster shake
       }
       this.gfx.setAngle((Math.random() - 0.5) * (8 + danger * 15));
+      this.gfx.setScale(1 + criticalIntensity * 0.08);
     } else {
       this.unstableOverlay.setFillStyle(0xff2222, 0);
       this.unstableOverlay.setScale(1);
       this.jitterOffset = { x: 0, y: 0 };
       this.jitterTimer = 0;
       this.gfx.setAngle(0);
+      this.gfx.setScale(1);
     }
+  }
+
+  private _applyVerticalOffsets(lift: number): void {
+    const y = -lift;
+    this.outerRing.setY(y);
+    this.dominanceShell.setY(y);
+    this.auraRing.setY(y);
+    this.unstableOverlay.setY(y);
+    this.body.setY(y);
+    this.eyeDot.setY(-PLAYER.RADIUS * 0.3 + y);
+  }
+
+  private _updateShadow(
+    auraNorm: number,
+    pressureNorm: number,
+    isUnstable: boolean,
+    criticalIntensity: number
+  ): void {
+    const liftNorm = Phaser.Math.Clamp(this.levitationY / Math.max(1, PLAYER.LEVITATION_MAX_Y), 0, 1);
+    const alpha = 0.36 - liftNorm * 0.22 + (isUnstable ? 0.08 : 0);
+    const jitterWobble = isUnstable ? Math.sin(Date.now() * 0.04) * (2 + criticalIntensity * 6) : 0;
+    this.shadow
+      .setY(0)
+      .setDisplaySize(
+        PLAYER.RADIUS * (2.6 + auraNorm * 0.8 + jitterWobble * 0.08),
+        PLAYER.RADIUS * (1.35 - liftNorm * 0.45 + pressureNorm * 0.10)
+      )
+      .setFillStyle(0x000000, Phaser.Math.Clamp(alpha, 0.14, 0.42));
   }
 
   /** Brief scale-up pulse when crossing into a new aura tier. */
@@ -375,6 +436,7 @@ export class Player {
     this._lastTierIndex = -1;
 
     this.releaseLocked = true;
+    this.snapToGround(scene);
     scene.time.delayedCall(PLAYER.RELEASE_LOCK_MS, () => {
       this.releaseLocked = false;
     });
@@ -400,6 +462,7 @@ export class Player {
       duration,
       ease: "Expo.Out",
       onComplete: () => {
+        this._applyVerticalOffsets(0);
         this.gfx.setAlpha(1).setScale(1);
         this.state = "idle";
         this._isCharging = false;
@@ -407,8 +470,29 @@ export class Player {
     });
   }
 
+  snapToGround(scene: Phaser.Scene): void {
+    this.levitationY = 0;
+    this._applyVerticalOffsets(0);
+    scene.tweens.add({
+      targets: [this.body, this.auraRing],
+      scaleX: "+=0.08",
+      scaleY: "-=0.12",
+      duration: RELEASE.GROUND_SNAP_SQUASH_MS,
+      ease: "Quad.Out",
+      yoyo: true,
+    });
+  }
+
   getPosition() {
     return { x: this.x, y: this.y };
+  }
+
+  getMovementNorm(): number {
+    const speed = Math.hypot(this.vx, this.vy);
+    const topSpeed = this._isCharging
+      ? PLAYER.SPEED * PLAYER.CHARGE_SPEED_MULT
+      : PLAYER.SPEED;
+    return Phaser.Math.Clamp(speed / Math.max(1, topSpeed), 0, 1);
   }
 
   /**

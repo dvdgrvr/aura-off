@@ -12,13 +12,19 @@ export class AuraSystem {
     aura: AuraModel,
     pressure: PressureModel,
     isCharging: boolean,
+    movementNorm: number,
     dtSec: number
   ): void {
     if (isCharging) {
+      const stillnessBonus = Math.max(
+        0,
+        1 - movementNorm / AURA.CHARGE_STILLNESS_MAX_BONUS_SPEED_NORM
+      ) * AURA.CHARGE_STILLNESS_BONUS_PER_SEC;
       // Base gain + pressure bonus
       const gain =
         (AURA.BASE_GAIN_PER_SEC +
-          pressure.value * AURA.PRESSURE_GAIN_MULTIPLIER) *
+          pressure.value * AURA.PRESSURE_GAIN_MULTIPLIER +
+          stillnessBonus) *
         dtSec;
       aura.add(gain);
     } else {

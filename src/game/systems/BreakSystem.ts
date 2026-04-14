@@ -23,10 +23,11 @@ export class BreakSystem {
     if (pressure.value < BREAK.DANGER_THRESHOLD) return false;
     if (aura.value <= 0) return false;
 
-    // Pressure above threshold: scale break chance with excess pressure
+    // Pressure above threshold: non-linear ramp so risk spikes hard near max pressure.
     const excess = pressure.value - BREAK.DANGER_THRESHOLD;
     const excessNorm = excess / (100 - BREAK.DANGER_THRESHOLD); // 0..1
-    const chanceThisFrame = BREAK.MAX_CHANCE_PER_SEC * excessNorm * dtSec;
+    const escalated = Math.pow(Math.max(0, Math.min(1, excessNorm)), BREAK.ESCALATION_EXPONENT);
+    const chanceThisFrame = BREAK.MAX_CHANCE_PER_SEC * escalated * dtSec;
 
     return Math.random() < chanceThisFrame;
   }

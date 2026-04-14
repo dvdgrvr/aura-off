@@ -15,11 +15,47 @@ export interface NetPlayerState {
   rematchReady: boolean;
 }
 
+export type NpcReaction = "idle" | "watching" | "hesitating" | "stepping_back";
+
+export interface NpcState {
+  id: string;
+  position: Vec2;
+  reaction: NpcReaction;
+  intensity: number; // 0..1
+}
+
+export type MultiplayerEventType = "break" | "release" | "perfect_release" | "cascade";
+
+export interface MultiplayerEvent {
+  id: number;
+  type: MultiplayerEventType;
+  actorPlayerId?: string;
+  actorName?: string;
+  targetPlayerId?: string;
+  targetName?: string;
+  timerSec: number;
+}
+
+export interface RoomNetDebugPlayer {
+  playerId: string;
+  lastInputAgeMs: number;
+  echoedClientSendMs?: number;
+}
+
+export interface RoomNetDebug {
+  serverNowMs: number;
+  tickRate: number;
+  players: RoomNetDebugPlayer[];
+}
+
 export interface RoomSnapshot {
   roomCode: string;
   hostId: string;
   phase: RoomPhase;
   players: NetPlayerState[];
+  npcs: NpcState[];
+  lastEvents: MultiplayerEvent[];
+  netDebug?: RoomNetDebug;
   timerSec: number;
   winnerPlayerId?: string;
   roundIndex: number;
@@ -37,6 +73,7 @@ export type ClientToServerMessage =
         moveY: number;
         isCharging: boolean;
         wantsRelease: boolean;
+        clientSendMs?: number;
       };
     }
   | {
@@ -80,4 +117,3 @@ export type ServerToClientMessage =
       type: "error";
       payload: { message: string };
     };
-

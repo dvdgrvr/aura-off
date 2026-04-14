@@ -48,12 +48,28 @@ export const PLAYER = {
    * Prevents accidental release from a quick tap.
    */
   MIN_CHARGE_HOLD_SEC: 0.18,
+  /** Base levitation offset while charging with meaningful aura. */
+  LEVITATION_BASE_Y: 2,
+  /** Maximum levitation offset at high aura + danger. */
+  LEVITATION_MAX_Y: 20,
+  /** Gentle bob while composed charging. */
+  LEVITATION_BOB_AMPLITUDE: 1.8,
+  /** Extra chaotic bob near break. */
+  LEVITATION_CRITICAL_BOB_AMPLITUDE: 5.6,
+  /** Bob speed at low pressure. */
+  LEVITATION_BOB_SPEED: 0.0038,
+  /** Bob speed near break. */
+  LEVITATION_CRITICAL_BOB_SPEED: 0.0092,
 } as const;
 
 export const AURA = {
   MAX: 100,
   BASE_GAIN_PER_SEC: 4,
   PRESSURE_GAIN_MULTIPLIER: 0.12,
+  /** Small aura gain bonus while charging with controlled movement. */
+  CHARGE_STILLNESS_BONUS_PER_SEC: 1.6,
+  /** At or below this movement norm, stillness bonus is full. */
+  CHARGE_STILLNESS_MAX_BONUS_SPEED_NORM: 0.14,
   DECAY_PER_SEC: 6,
   TIERS: [
     { label: "Warming Up",   min: 0,  color: 0x6688cc },
@@ -70,15 +86,27 @@ export const PRESSURE = {
   DECAY_PER_SEC: 20,
   DECAY_WHILE_CHARGING_PER_SEC: 5,
   CHARGE_EXTRA_PER_SEC: 8,
+  /** Extra pressure while charging and moving too aggressively. */
+  CHARGE_MOVEMENT_PENALTY_MAX_PER_SEC: 9,
+  /** Pressure relief while charging with composed stillness. */
+  CHARGE_STILLNESS_RELIEF_PER_SEC: 3.4,
+  /** Movement norm at or below which stillness relief is strongest. */
+  CHARGE_CONTROL_THRESHOLD: 0.22,
 } as const;
 
 export const BREAK = {
+  /** Pressure where danger feedback begins (before actual break chance starts). */
+  DANGER_ZONE_THRESHOLD: 46,
   DANGER_THRESHOLD: 60,
   /** Pressure above which the "unstable" warning visual kicks in (lower than break, higher visibility). */
-  UNSTABLE_VISUAL_THRESHOLD: 50,
+  UNSTABLE_VISUAL_THRESHOLD: 46,
+  /** Pressure where instability escalates aggressively into near-break chaos. */
+  CRITICAL_VISUAL_THRESHOLD: 78,
   MAX_CHANCE_PER_SEC: 0.55,
   DURATION_SEC: 1.4,
   AURA_LOSS_FRACTION: 0.7,
+  /** Non-linear exponent for break risk escalation; higher = steeper endgame risk. */
+  ESCALATION_EXPONENT: 2.0,
   /** Shake intensity on break. */
   SHAKE_INTENSITY: 0.022,
   SHAKE_DURATION_MS: 450,
@@ -87,12 +115,21 @@ export const BREAK = {
   HITSTOP_TIMESCALE: 0.08,
   /** Radius of the break impact burst ring. */
   IMPACT_RING_RADIUS: 320,
+  /** Additional short freeze after break to emphasize public embarrassment. */
+  EMBARRASSMENT_PAUSE_MS: 130,
 } as const;
 
 export const RELEASE = {
   MIN_AURA_TO_RELEASE: 5,
   SCORE_MULTIPLIER: 100,
   STRONG_THRESHOLD: 50,
+  /**
+   * Perfect release window: pressure range just before break danger.
+   * Rewards "push your luck" timing without requiring UI reading.
+   */
+  PERFECT_WINDOW_MIN_PRESSURE: 53,
+  PERFECT_WINDOW_MAX_PRESSURE: 59.5,
+  PERFECT_SCORE_MULTIPLIER: 1.35,
   /** Camera shake intensity for strong release. */
   STRONG_SHAKE_INTENSITY: 0.025,
   STRONG_SHAKE_DURATION_MS: 600,
@@ -115,6 +152,8 @@ export const RELEASE = {
   STRONG_SHOCKWAVE_SECONDARY: 980,
   /** Weak release shockwave size. */
   WEAK_SHOCKWAVE: 340,
+  /** Brief landing squash when snapping back to ground on release. */
+  GROUND_SNAP_SQUASH_MS: 130,
 } as const;
 
 export const NPC = {
@@ -291,6 +330,84 @@ export const HAZARD_CHAOS_LAUNCHPAD = {
   COLOR_PAD: 0x66ccff,
   COLOR_TELEGRAPH: 0x33bbff,
   COLOR_BURST: 0xffffff,
+} as const;
+
+/**
+ * Multiplayer social-interaction tuning.
+ * Server simulation only; single-player behavior remains unchanged.
+ */
+export const MULTIPLAYER_INTERACTION = {
+  /** Shared pressure multiplier per extra charging player. */
+  SHARED_PRESSURE_PER_EXTRA_CHARGER: 0.24,
+  /** Distance threshold for extra proximity pressure while both players charge. */
+  PROXIMITY_CHARGE_RADIUS: 210,
+  /** Max added pressure/sec from one nearby charging player at zero distance. */
+  PROXIMITY_CHARGE_MAX_PER_PLAYER: 7.0,
+
+  /** Base crowd-attention pressure/sec applied in multiplayer rounds. */
+  ATTENTION_BASE_PER_SEC: 1.4,
+  /** Extra attention pressure distributed by relative aura level. */
+  ATTENTION_AURA_SCALE_PER_SEC: 8.0,
+  /** Bonus attention weight when a player is charging. */
+  ATTENTION_CHARGING_WEIGHT_BONUS: 0.65,
+
+  /** Radius for cascade effects around break/release events. */
+  INTERACTION_RADIUS: 240,
+  /** Pressure spike applied to nearby players when someone breaks. */
+  BREAK_CASCADE_SPIKE: 10,
+  /** Pressure reduction applied to nearby players when someone releases. */
+  RELEASE_NEARBY_PRESSURE_REDUCTION: 6,
+
+  /** Start applying break-threshold variance only above this pressure. */
+  VARIANCE_START_PRESSURE: 74,
+  /** Random +/- variance added to break threshold in high-risk states. */
+  BREAK_THRESHOLD_VARIANCE: 3.0,
+} as const;
+
+/**
+ * Multiplayer crowd (server-authoritative NPC) tuning.
+ * Crowd is reactive pressure/social atmosphere, never enemy AI.
+ */
+export const MULTIPLAYER_NPC = {
+  COUNT: 10,
+  SPEED: 46,
+  WANDER_RETARGET_SEC_MIN: 1.6,
+  WANDER_RETARGET_SEC_MAX: 3.2,
+  PRESSURE_RADIUS: 180,
+  PRESSURE_MAX_PER_SEC: 7.2,
+  ATTENTION_PRESSURE_BONUS_PER_SEC: 3.0,
+  PERSONAL_SPACE_BASE: 80,
+  PERSONAL_SPACE_AURA_BONUS: 140,
+  ATTENTION_CHARGE_BONUS: 0.75,
+  ATTENTION_AURA_WEIGHT: 1.1,
+} as const;
+
+/**
+ * Multiplayer client-side net feel tuning.
+ * Rendering only; server authority stays unchanged.
+ */
+export const MULTIPLAYER_NET = {
+  INTERPOLATION_DELAY_MS: 100,
+  MAX_EXTRAPOLATION_MS: 100,
+  STALE_SNAPSHOT_MS: 700,
+  LOCAL_SOFT_RECONCILE_LERP: 0.18,
+  LOCAL_HARD_SNAP_ERROR_PX: 90,
+  REMOTE_POSITION_LERP: 0.45,
+  REMOTE_AURA_LERP: 0.35,
+  REMOTE_NAME_LERP: 0.40,
+  CALL_OUT_DUPLICATE_SUPPRESS_MS: 1800,
+} as const;
+
+/**
+ * Session lore: lightweight callback humor across rounds.
+ * Session-scoped only (no persistence/profile data).
+ */
+export const SESSION_LORE = {
+  ENABLED: true,
+  MAX_TAGS_PER_ROUND: 2,
+  EARLY_RELEASE_AURA_THRESHOLD: 22,
+  ALMOST_HAD_IT_PEAK_AURA_THRESHOLD: 72,
+  DANGER_SURVIVAL_MIN_SEC: 2.5,
 } as const;
 
 export const NPC_COLORS = [

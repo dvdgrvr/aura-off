@@ -24,6 +24,7 @@ import {
 import { CoreGameplaySnapshot, GameplaySyncEvent } from "../core/multiplayerContracts";
 import { HazardScheduler } from "../systems/HazardScheduler";
 import { GameplayStateCoordinator } from "../systems/GameplayStateCoordinator";
+import { sessionLore } from "../systems/SessionLoreSystem";
 import { LaunchPadChaos, LaunchPadPayload } from "../entities/hazards/LaunchPadChaos";
 import { NoisePulse } from "../entities/hazards/NoisePulse";
 import { Player } from "../entities/player/Player";
@@ -203,6 +204,7 @@ export class ArenaScene extends Phaser.Scene {
 
   private _startRound(): void {
     this.gameplay.startRound();
+    sessionLore.startRound();
     this.breakLocked = false;
     this.roundEnded = false;
     this.currentZoom = CAMERA.ZOOM_DEFAULT;
@@ -230,6 +232,7 @@ export class ArenaScene extends Phaser.Scene {
       playerPos,
       npcPositions: this.crowd.getPositions(),
       isCharging: this.player.isCharging,
+      movementNorm: this.player.getMovementNorm(),
       wantsRelease: this.player.wantsRelease,
       simulationLocked: this.breakLocked,
     });
@@ -241,6 +244,7 @@ export class ArenaScene extends Phaser.Scene {
     }
 
     const sim = this._sim();
+    sessionLore.tick(sim.pressureValue, this.player.isCharging, dtSec);
     this.crowd.update(
       this.player.getPosition(),
       sim.auraValue,
@@ -290,10 +294,12 @@ export class ArenaScene extends Phaser.Scene {
     this._playImpactBurst(p.x, p.y, 0xff3344, BREAK.IMPACT_RING_RADIUS, 420);
     this.hud.flashScreen(this, 0xff2200, 0.45, 600);
     this.crowd.triggerBreakDramatic(this, p);
-    this.hud.showCallout(this, "BROKE! 💀", "#ff4444", 1800);
+    this.hud.showCallout(this, "COMPOSURE BROKE", "#ff4444", 1900);
 
     this.player.playBreak(this, () => {
-      this.breakLocked = false;
+      this.time.delayedCall(BREAK.EMBARRASSMENT_PAUSE_MS, () => {
+        this.breakLocked = false;
+      });
     });
   }
 
@@ -325,10 +331,16 @@ export class ArenaScene extends Phaser.Scene {
       this._playImpactBurst(pos.x, pos.y, 0x99ddff, RELEASE.WEAK_SHOCKWAVE, 320);
     }
 
+    if (result.perfectRelease) {
+      this.hud.showCallout(this, "PERFECT RELEASE!", "#ffef66", 1250);
+      this._playImpactBurst(pos.x, pos.y, 0xfff3a8, RELEASE.STRONG_SHOCKWAVE_PRIMARY, 520);
+      this.cameras.main.shake(240, 0.012);
+    }
+
     this.crowd.triggerReleaseDramatic(this, pos, isStrong);
     this.player.playRelease(this, isStrong);
 
-    const label = isStrong ? "AURA RELEASED! ✨" : "Released.";
+    const label = isStrong ? "CONFIDENT FLEX" : "Composed release";
     const color = isStrong ? "#ffcc00" : "#aaddff";
     this.hud.showCallout(this, label, color, isStrong ? 2000 : 1000);
 
@@ -350,6 +362,9 @@ export class ArenaScene extends Phaser.Scene {
       score: 0,
       broke: sim.brokeThisRound,
     };
+    const lore = sessionLore.finalizeRound(finalResult);
+    finalResult.loreTitle = lore.title;
+    finalResult.loreTags = lore.tags;
 
     this.time.delayedCall(RELEASE.ROUND_END_DELAY_MS, () => {
       this.scene.start("ResultScene", { result: finalResult });
@@ -367,12 +382,26 @@ export class ArenaScene extends Phaser.Scene {
     const isUnstable =
       sim.pressureValue >= BREAK.UNSTABLE_VISUAL_THRESHOLD &&
       this.player.isCharging;
+    const dangerIntensity = Phaser.Math.Clamp(
+      (sim.pressureValue - BREAK.DANGER_ZONE_THRESHOLD) /
+      (BREAK.DANGER_THRESHOLD - BREAK.DANGER_ZONE_THRESHOLD),
+      0,
+      1
+    );
+    const criticalIntensity = Phaser.Math.Clamp(
+      (sim.pressureValue - BREAK.CRITICAL_VISUAL_THRESHOLD) /
+      (100 - BREAK.CRITICAL_VISUAL_THRESHOLD),
+      0,
+      1
+    );
 
     this.player.applyVisuals(
       sim.auraNormalized,
       sim.pressureNormalized,
       tierIndex,
-      isUnstable
+      isUnstable,
+      dangerIntensity,
+      criticalIntensity
     );
 
     // Floor pulse: glow under player that grows with aura
@@ -412,6 +441,21 @@ export class ArenaScene extends Phaser.Scene {
     const currentAlpha = this.vignetteGfx.alpha;
     const nextAlpha = currentAlpha + (targetVigAlpha - currentAlpha) * 0.06;
     this.vignetteGfx.setAlpha(nextAlpha);
+
+    // Critical near-break shake: communicates "you are pushing your luck" without UI.
+    if (
+      this.player.isCharging &&
+      sim.pressureValue >= BREAK.CRITICAL_VISUAL_THRESHOLD &&
+      !this.breakLocked
+    ) {
+      const intensity = Phaser.Math.Clamp(
+        (sim.pressureValue - BREAK.CRITICAL_VISUAL_THRESHOLD) /
+        (100 - BREAK.CRITICAL_VISUAL_THRESHOLD),
+        0,
+        1
+      );
+      this.cameras.main.shake(42, 0.0018 + intensity * 0.0030, true);
+    }
   }
 
   /**

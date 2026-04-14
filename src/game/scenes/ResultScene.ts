@@ -45,11 +45,26 @@ export class ResultScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(10);
 
+    if (result.loreTitle) {
+      this.add
+        .text(W / 2, H / 2 - 58, result.loreTitle, {
+          fontFamily: "monospace",
+          fontSize: "20px",
+          color: "#a9b9cf",
+        })
+        .setOrigin(0.5)
+        .setDepth(10);
+    }
+
     // Stats
     const lines = [
       `Peak Aura:    ${result.peakAura.toFixed(1)}`,
       `Released:     ${result.releaseAura.toFixed(1)}`,
       `Score:        ${result.score.toLocaleString()}`,
+      result.perfectRelease ? `Perfect Timing x${(result.perfectMultiplier ?? 1).toFixed(2)}` : "",
+      result.loreTags && result.loreTags.length > 0
+        ? `Session:      ${result.loreTags.join(" • ")}`
+        : "",
       result.broke ? `(broke during round)` : "",
     ].filter(Boolean);
 

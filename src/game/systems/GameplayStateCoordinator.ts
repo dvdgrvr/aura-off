@@ -25,6 +25,7 @@ export interface GameplayStepInput {
   playerPos: Vec2;
   npcPositions: Vec2[];
   isCharging: boolean;
+  movementNorm: number;
   wantsRelease: boolean;
   simulationLocked: boolean;
 }
@@ -74,9 +75,16 @@ export class GameplayStateCoordinator {
       input.playerPos,
       input.npcPositions,
       input.isCharging,
+      input.movementNorm,
       input.dtSec
     );
-    this.auraSystem.tick(this.aura, this.pressure, input.isCharging, input.dtSec);
+    this.auraSystem.tick(
+      this.aura,
+      this.pressure,
+      input.isCharging,
+      input.movementNorm,
+      input.dtSec
+    );
 
     if (this.breakSystem.tryBreak(this.pressure, this.aura, input.isCharging, input.dtSec)) {
       this.runState.recordBreak();

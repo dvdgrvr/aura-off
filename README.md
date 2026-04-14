@@ -11,6 +11,11 @@ Implemented intentionally small:
 - instant rematch flow
 - no public lobbies, matchmaking, persistence, progression, cosmetics, or accounts
 
+Polish additions:
+- server-authored `lastEvents` feed (bounded recent break/release/cascade moments)
+- reactive crowd NPC pressure actors (non-enemy behavior)
+- client interpolation/prediction smoothing with soft reconciliation
+
 ## Authoritative Boundaries
 Server-authoritative:
 - room membership and host
@@ -40,6 +45,11 @@ npm run dev:server
 ```
 Default server: `ws://localhost:8787`
 
+Optional dev net diagnostics from server snapshots:
+```bash
+NET_DEBUG=1 npm run dev:server
+```
+
 ### 3. Run browser client
 ```bash
 npm run dev
@@ -57,7 +67,9 @@ Host opens:
 ```text
 http://localhost:5173/?mode=mp
 ```
-or with explicit name/server:
+You will get an in-game join prompt for name and optional room code.
+
+Optional URL prefills are still supported:
 ```text
 http://localhost:5173/?mode=mp&name=Host&ws=ws://localhost:8787
 ```
@@ -68,6 +80,8 @@ Friend joins with:
 ```text
 http://localhost:5173/?mode=mp&room=ABCD&name=Friend&ws=ws://localhost:8787
 ```
+
+Note: joining is blocked while a round is live; join in lobby/result for fairness.
 
 ## Multiplayer Controls
 - `WASD` or arrow keys: move
@@ -96,4 +110,3 @@ This repo includes:
 ### Notes
 - Server listens on Railway `PORT` automatically.
 - Health check endpoint is `GET /`.
-

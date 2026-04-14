@@ -1,7 +1,22 @@
 import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
-import { ARENA, AURA, BREAK, PLAYER, PRESSURE } from "../src/game/config/GameConfig";
-import { ClientToServerMessage, NetPlayerState, RoomSnapshot, ServerToClientMessage } from "../src/shared/protocol";
+import { ARENA, AURA, BREAK, PLAYER, PRESSURE, RELEASE } from "../src/game/config/GameConfig";
+import {
+  ClientToServerMessage,
+  MultiplayerEvent,
+  NetPlayerState,
+  RoomSnapshot,
+  ServerToClientMessage,
+} from "../src/shared/protocol";
+import {
+  applyBreakCascade,
+  applyReleaseRelief,
+  buildAttentionPressureMapPerSec,
+  proximityChargePressurePerSec,
+  resolveBreakThresholdWithVariance,
+  sharedPressureMultiplier,
+} from "./socialInteraction";
+import { createRoomCrowd, npcPressureForPlayerPerSec, updateRoomCrowd } from "./multiplayerCrowd";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
@@ -12,6 +27,8 @@ const MAX_PLAYERS = 4;
 const MIN_PLAYERS_TO_START = 2;
 const PLAYER_SPEED_MP = PLAYER.SPEED * 0.95;
 const PRESSURE_PLAYER_RADIUS = 240;
+const ENABLE_NET_DEBUG = process.env.NET_DEBUG === "1";
+const LAST_EVENTS_MAX = 3;
 
 type InputIntent = {
   moveX: number;
@@ -24,6 +41,8 @@ type RoomPlayer = NetPlayerState & {
   socket: WebSocket;
   input: InputIntent;
   connected: boolean;
+  lastInputServerMs: number;
+  lastClientSendMs?: number;
 };
 
 type RoomState = {
@@ -35,6 +54,9 @@ type RoomState = {
   winnerPlayerId?: string;
   roundIndex: number;
   lastEndReason?: "timer" | "last_unbroken";
+  npcs: ReturnType<typeof createRoomCrowd>;
+  lastEvents: MultiplayerEvent[];
+  eventSeq: number;
 };
 
 const rooms = new Map<string, RoomState>();
@@ -68,6 +90,21 @@ function randomId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+function sanitizePlayerName(raw: string): string {
+  const banned = ["fuck", "shit", "bitch", "cunt", "nigger", "fag"];
+  const cleaned = raw
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 16);
+  if (!cleaned) return `P${Math.floor(Math.random() * 90 + 10)}`;
+  const lowered = cleaned.toLowerCase();
+  if (banned.some((w) => lowered.includes(w))) {
+    return `P${Math.floor(Math.random() * 90 + 10)}`;
+  }
+  return cleaned;
+}
+
 function getOrCreateRoom(code?: string): RoomState {
   const requested = code?.toUpperCase();
   if (requested && rooms.has(requested)) {
@@ -84,12 +121,30 @@ function getOrCreateRoom(code?: string): RoomState {
     players: new Map(),
     timerSec: ROUND_DURATION_SEC,
     roundIndex: 0,
+    npcs: createRoomCrowd(),
+    lastEvents: [],
+    eventSeq: 1,
   };
   rooms.set(roomCode, room);
   return room;
 }
 
+function pushRoomEvent(
+  room: RoomState,
+  event: Omit<MultiplayerEvent, "id" | "timerSec">
+): void {
+  room.lastEvents.push({
+    id: room.eventSeq++,
+    timerSec: room.timerSec,
+    ...event,
+  });
+  if (room.lastEvents.length > LAST_EVENTS_MAX) {
+    room.lastEvents.splice(0, room.lastEvents.length - LAST_EVENTS_MAX);
+  }
+}
+
 function roomSnapshot(room: RoomState): RoomSnapshot {
+  const serverNow = Date.now();
   return {
     roomCode: room.code,
     hostId: room.hostId,
@@ -106,6 +161,24 @@ function roomSnapshot(room: RoomState): RoomSnapshot {
       score: p.score,
       rematchReady: p.rematchReady,
     })),
+    npcs: room.npcs.map((n) => ({
+      id: n.id,
+      position: n.position,
+      reaction: n.reaction,
+      intensity: n.intensity,
+    })),
+    lastEvents: [...room.lastEvents],
+    netDebug: ENABLE_NET_DEBUG
+      ? {
+          serverNowMs: serverNow,
+          tickRate: TICK_RATE,
+          players: [...room.players.values()].map((p) => ({
+            playerId: p.id,
+            lastInputAgeMs: Math.max(0, serverNow - p.lastInputServerMs),
+            echoedClientSendMs: p.lastClientSendMs,
+          })),
+        }
+      : undefined,
     timerSec: room.timerSec,
     winnerPlayerId: room.winnerPlayerId,
     roundIndex: room.roundIndex,
@@ -125,6 +198,15 @@ function applyHostFallback(room: RoomState): void {
   }
   if (!room.players.has(room.hostId)) {
     room.hostId = room.players.keys().next().value as string;
+  }
+  if (room.phase === "in_round" && room.players.size < MIN_PLAYERS_TO_START) {
+    room.phase = "result";
+    room.lastEndReason = "last_unbroken";
+    room.winnerPlayerId = [...room.players.values()][0]?.id;
+    broadcast(room, {
+      type: "round_ended",
+      payload: { winnerPlayerId: room.winnerPlayerId, reason: "last_unbroken" },
+    });
   }
 }
 
@@ -156,6 +238,7 @@ function startRound(room: RoomState): void {
   room.winnerPlayerId = undefined;
   room.lastEndReason = undefined;
   room.roundIndex += 1;
+  room.lastEvents = [];
   resetRoundPlayers(room);
   broadcast(room, { type: "round_started", payload: { roundIndex: room.roundIndex, durationSec: ROUND_DURATION_SEC } });
 }
@@ -184,6 +267,13 @@ function tickRoom(room: RoomState): void {
 
   room.timerSec = Math.max(0, room.timerSec - DT_SEC);
   const players = [...room.players.values()];
+  updateRoomCrowd(room.npcs, players, DT_SEC);
+  const chargingPlayers = players.filter((p) => p.input.isCharging && !p.isBroken && !p.isReleased);
+  const chargingCount = chargingPlayers.length;
+  const chargeSharedMultiplier = sharedPressureMultiplier(chargingCount);
+  const attentionMap = buildAttentionPressureMapPerSec(players);
+  const breakCascadeDeltas = new Map<string, number>();
+  const releaseReliefDeltas = new Map<string, number>();
 
   for (const p of players) {
     if (p.isBroken || p.isReleased) continue;
@@ -209,8 +299,12 @@ function tickRoom(room: RoomState): void {
 
     p.isCharging = !!p.input.isCharging;
 
-    // Simplified deterministic pressure for multiplayer:
-    // self-exposure while charging + nearby-player social pressure + center bonus.
+    // Multiplayer pressure stack:
+    // - social proximity pressure (all players)
+    // - shared charging multiplier (more simultaneous charging => more risk)
+    // - close charging proximity pressure (high social tension when contesting space)
+    // - crowd attention pressure biased by aura + charging
+    // - center-zone bonus
     let nearbyPressure = 0;
     for (const other of players) {
       if (other.id === p.id) continue;
@@ -221,16 +315,22 @@ function tickRoom(room: RoomState): void {
         nearbyPressure += (1 - d / PRESSURE_PLAYER_RADIUS) * 10;
       }
     }
+    const proximityChargeExtra = proximityChargePressurePerSec(p, players);
+    const attentionPressure = attentionMap.get(p.id) ?? 0;
+    const npcPressure = npcPressureForPlayerPerSec(p, room.npcs);
     const centerDx = p.position.x - ARENA.WIDTH / 2;
     const centerDy = p.position.y - ARENA.HEIGHT / 2;
     const inCenter = Math.hypot(centerDx, centerDy) < ARENA.CENTER_ZONE_RADIUS;
     const centerMult = inCenter ? 1 + ARENA.CENTER_ZONE_PRESSURE_BONUS : 1;
 
     if (p.isCharging) {
+      const sharedChargeExposure = PRESSURE.CHARGE_EXTRA_PER_SEC * chargeSharedMultiplier;
       p.pressure = clamp(
         p.pressure +
-          ((PRESSURE.CHARGE_EXTRA_PER_SEC + nearbyPressure) * centerMult - PRESSURE.DECAY_WHILE_CHARGING_PER_SEC) *
-            DT_SEC,
+          ((sharedChargeExposure + nearbyPressure + proximityChargeExtra + attentionPressure) * centerMult -
+            PRESSURE.DECAY_WHILE_CHARGING_PER_SEC) *
+            DT_SEC +
+          npcPressure * DT_SEC,
         0,
         PRESSURE.MAX
       );
@@ -240,26 +340,89 @@ function tickRoom(room: RoomState): void {
         AURA.MAX
       );
     } else {
-      p.pressure = clamp(p.pressure + nearbyPressure * DT_SEC - PRESSURE.DECAY_PER_SEC * DT_SEC, 0, PRESSURE.MAX);
+      p.pressure = clamp(
+        p.pressure +
+          (nearbyPressure + attentionPressure * 0.6) * DT_SEC -
+          PRESSURE.DECAY_PER_SEC * DT_SEC +
+          npcPressure * 0.65 * DT_SEC,
+        0,
+        PRESSURE.MAX
+      );
       p.aura = clamp(p.aura - AURA.DECAY_PER_SEC * DT_SEC, 0, AURA.MAX);
     }
 
-    // Deterministic break threshold for cleaner net sync.
-    if (p.isCharging && p.pressure >= BREAK.DANGER_THRESHOLD + 35) {
+    // High-risk variance on break threshold to add slight unpredictability in dangerous states.
+    const breakThreshold = resolveBreakThresholdWithVariance(p.pressure);
+    if (p.isCharging && p.pressure >= breakThreshold) {
       p.isBroken = true;
       p.isCharging = false;
       p.aura = clamp(p.aura * (1 - BREAK.AURA_LOSS_FRACTION), 0, AURA.MAX);
       p.pressure = 0;
+
+      // Cascade failure: nearby players get a pressure spike.
+      const cascade = applyBreakCascade(p, players);
+      let strongestCascadeTarget: RoomPlayer | undefined;
+      let strongestCascadeAmount = 0;
+      for (const [id, amt] of cascade) {
+        breakCascadeDeltas.set(id, (breakCascadeDeltas.get(id) ?? 0) + amt);
+        if (amt > strongestCascadeAmount) {
+          strongestCascadeAmount = amt;
+          strongestCascadeTarget = players.find((other) => other.id === id);
+        }
+      }
+
+      pushRoomEvent(room, {
+        type: "break",
+        actorPlayerId: p.id,
+        actorName: p.name,
+      });
+      if (strongestCascadeTarget && strongestCascadeAmount > 1.5) {
+        pushRoomEvent(room, {
+          type: "cascade",
+          actorPlayerId: p.id,
+          actorName: p.name,
+          targetPlayerId: strongestCascadeTarget.id,
+          targetName: strongestCascadeTarget.name,
+        });
+      }
     }
 
     if (!p.isBroken && p.input.wantsRelease && p.aura >= 5) {
+      const wasPerfectReleaseWindow =
+        p.pressure >= RELEASE.PERFECT_WINDOW_MIN_PRESSURE &&
+        p.pressure <= RELEASE.PERFECT_WINDOW_MAX_PRESSURE;
       p.isReleased = true;
       p.isCharging = false;
       p.score += Math.round(p.aura * 100);
       p.aura = 0;
       p.pressure = 0;
+
+      // Release interaction: nearby players get slight pressure relief.
+      const relief = applyReleaseRelief(p, players);
+      for (const [id, amt] of relief) {
+        releaseReliefDeltas.set(id, (releaseReliefDeltas.get(id) ?? 0) + amt);
+      }
+
+      pushRoomEvent(room, {
+        type: wasPerfectReleaseWindow ? "perfect_release" : "release",
+        actorPlayerId: p.id,
+        actorName: p.name,
+      });
     }
     p.input.wantsRelease = false;
+  }
+
+  // Apply inter-player event effects after primary simulation pass.
+  for (const p of players) {
+    if (p.isBroken || p.isReleased) continue;
+    const spike = breakCascadeDeltas.get(p.id) ?? 0;
+    const relief = releaseReliefDeltas.get(p.id) ?? 0;
+    if (spike > 0) {
+      p.pressure = clamp(p.pressure + spike, 0, PRESSURE.MAX);
+    }
+    if (relief > 0) {
+      p.pressure = clamp(p.pressure - relief, 0, PRESSURE.MAX);
+    }
   }
 
   maybeEndRound(room);
@@ -287,8 +450,12 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "hello") {
-      const name = msg.payload.name.trim().slice(0, 16) || "Player";
+      const name = sanitizePlayerName(msg.payload.name);
       const room = getOrCreateRoom(msg.payload.roomCode);
+      if (room.phase === "in_round") {
+        send(ws, { type: "error", payload: { message: "Round in progress. Join after result." } });
+        return;
+      }
       if (room.players.size >= MAX_PLAYERS) {
         send(ws, { type: "error", payload: { message: "Room is full (max 4)." } });
         return;
@@ -310,6 +477,7 @@ wss.on("connection", (ws) => {
         rematchReady: false,
         socket: ws,
         connected: true,
+        lastInputServerMs: Date.now(),
         input: { moveX: 0, moveY: 0, isCharging: false, wantsRelease: false },
       };
       room.players.set(playerId, player);
@@ -343,6 +511,10 @@ wss.on("connection", (ws) => {
       player.input.moveY = msg.payload.moveY;
       player.input.isCharging = msg.payload.isCharging;
       player.input.wantsRelease = msg.payload.wantsRelease || player.input.wantsRelease;
+      player.lastInputServerMs = Date.now();
+      if (typeof msg.payload.clientSendMs === "number") {
+        player.lastClientSendMs = msg.payload.clientSendMs;
+      }
       return;
     }
 
@@ -398,4 +570,3 @@ setInterval(() => {
 httpServer.listen(PORT, () => {
   console.log(`Aura Off multiplayer server listening on :${PORT}`);
 });
-

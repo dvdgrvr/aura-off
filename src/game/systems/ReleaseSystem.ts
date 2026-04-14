@@ -20,7 +20,11 @@ export class ReleaseSystem {
     if (aura.value < RELEASE.MIN_AURA_TO_RELEASE) return null;
 
     const releaseAura = aura.value;
-    const score = Math.round(releaseAura * RELEASE.SCORE_MULTIPLIER);
+    const perfectRelease =
+      pressure.value >= RELEASE.PERFECT_WINDOW_MIN_PRESSURE &&
+      pressure.value <= RELEASE.PERFECT_WINDOW_MAX_PRESSURE;
+    const multiplier = perfectRelease ? RELEASE.PERFECT_SCORE_MULTIPLIER : 1;
+    const score = Math.round(releaseAura * RELEASE.SCORE_MULTIPLIER * multiplier);
 
     aura.reset();
     pressure.reset();
@@ -30,6 +34,8 @@ export class ReleaseSystem {
       releaseAura,
       score,
       broke: false, // caller sets this from RunState
+      perfectRelease,
+      perfectMultiplier: multiplier,
     };
   }
 

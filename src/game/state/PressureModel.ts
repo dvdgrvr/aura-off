@@ -4,6 +4,7 @@
  * No Phaser dependency — pure data.
  */
 import { PRESSURE } from "../config/GameConfig";
+import { BREAK } from "../config/GameConfig";
 
 export class PressureModel {
   value: number = 0;
@@ -13,7 +14,7 @@ export class PressureModel {
   }
 
   get isDangerous(): boolean {
-    return this.value >= 60; // mirrors BREAK.DANGER_THRESHOLD
+    return this.value >= BREAK.DANGER_ZONE_THRESHOLD;
   }
 
   add(amount: number): void {
