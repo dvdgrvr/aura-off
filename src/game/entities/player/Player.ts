@@ -7,6 +7,7 @@
 import Phaser from "phaser";
 import { PLAYER, ARENA, BREAK, RELEASE, VISUALS } from "../../config/GameConfig";
 import { PlayerState } from "../../core/types";
+import { MobileInput } from "../../input/MobileInput";
 
 const RING_COLORS = [0x6688cc, 0x44aaff, 0xffcc22, 0xff6600];
 
@@ -202,9 +203,9 @@ export class Player {
       return;
     }
 
-    const chargeIsDown = (this.keySpace?.isDown || this.keyX?.isDown) ?? false;
+    const chargeIsDown = (this.keySpace?.isDown || this.keyX?.isDown || MobileInput.chargeIsDown) ?? false;
     const chargeJustUp = Phaser.Input.Keyboard.JustUp(this.keySpace) ||
-      Phaser.Input.Keyboard.JustUp(this.keyX);
+      Phaser.Input.Keyboard.JustUp(this.keyX) || MobileInput.chargeJustUp;
 
     if (chargeIsDown) {
       this._chargeDurationSec += dtSec;
@@ -240,8 +241,8 @@ export class Player {
   }
 
   private _updateMovement(_dtSec: number): void {
-    let inputX = 0;
-    let inputY = 0;
+    let inputX = MobileInput.stickVector.x;
+    let inputY = MobileInput.stickVector.y;
     if (this.keyA?.isDown || this.cursors?.left.isDown) inputX -= 1;
     if (this.keyD?.isDown || this.cursors?.right.isDown) inputX += 1;
     if (this.keyW?.isDown || this.cursors?.up.isDown) inputY -= 1;

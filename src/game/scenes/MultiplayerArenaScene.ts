@@ -4,6 +4,7 @@ import { MultiplayerClient } from "../net/MultiplayerClient";
 import { DisruptPulseState, MultiplayerEvent, NetPlayerState, NpcState, RoomSnapshot } from "../../shared/protocol";
 import { Hud } from "../ui/Hud";
 import { AuraTier } from "../core/types";
+import { MobileInput } from "../input/MobileInput";
 
 type RenderPlayer = {
   shadow: Phaser.GameObjects.Ellipse;
@@ -131,6 +132,7 @@ export class MultiplayerArenaScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    MobileInput.update();
     const dtSec = delta / 1000;
     if (this.joinModal) return;
     if (!this.joinConnected) return;
@@ -460,7 +462,7 @@ export class MultiplayerArenaScene extends Phaser.Scene {
     if (this.keySpace && Phaser.Input.Keyboard.JustUp(this.keySpace)) {
       this.releaseQueued = true;
     }
-    if (this.keyQ && Phaser.Input.Keyboard.JustDown(this.keyQ)) {
+    if ((this.keyQ && Phaser.Input.Keyboard.JustDown(this.keyQ)) || MobileInput.skillJustDown) {
       this.client.send({
         type: "ability_use",
         payload: { abilityType: "disrupt_pulse" },

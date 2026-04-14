@@ -14,6 +14,9 @@ import { MainMenuScene } from "./game/scenes/MainMenuScene";
 import { ArenaScene } from "./game/scenes/ArenaScene";
 import { MultiplayerArenaScene } from "./game/scenes/MultiplayerArenaScene";
 import { ResultScene } from "./game/scenes/ResultScene";
+import { MobileInput } from "./game/input/MobileInput";
+
+MobileInput.init();
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,

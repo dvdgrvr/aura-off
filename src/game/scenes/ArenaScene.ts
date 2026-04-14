@@ -32,6 +32,7 @@ import { Player } from "../entities/player/Player";
 import { NpcCrowdController } from "../entities/npc/NpcCrowdController";
 import { Hud } from "../ui/Hud";
 import { RoundResult } from "../core/types";
+import { MobileInput } from "../input/MobileInput";
 
 export class ArenaScene extends Phaser.Scene {
   // --- Gameplay state coordinator ---
@@ -283,6 +284,7 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    MobileInput.update();
     const dtSec = delta / 1000;
 
     // Camera and vignette always update — even after round ends — so the zoom-out
