@@ -10,6 +10,7 @@
 import Phaser from "phaser";
 import { BootScene } from "./game/scenes/BootScene";
 import { PreloadScene } from "./game/scenes/PreloadScene";
+import { MainMenuScene } from "./game/scenes/MainMenuScene";
 import { ArenaScene } from "./game/scenes/ArenaScene";
 import { MultiplayerArenaScene } from "./game/scenes/MultiplayerArenaScene";
 import { ResultScene } from "./game/scenes/ResultScene";
@@ -18,13 +19,19 @@ const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   width: 1280,
   height: 720,
+  autoRound: true,
   backgroundColor: "#1a1a2e",
   parent: "game-container",
+  render: {
+    antialias: true,
+    antialiasGL: true,
+    roundPixels: true,
+  },
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [BootScene, PreloadScene, ArenaScene, MultiplayerArenaScene, ResultScene],
+  scene: [BootScene, PreloadScene, MainMenuScene, ArenaScene, MultiplayerArenaScene, ResultScene],
 };
 
 const game = new Phaser.Game(config);

@@ -24,25 +24,25 @@ export const PLAYER = {
    * 1.0 = instant (no acceleration feel).
    * 0.25–0.35 = snappy but not instant.
    */
-  ACCEL_LERP: 0.28,
+  ACCEL_LERP: 0.31,
   /**
    * Friction applied when no direction is held (velocity → 0).
    * Higher = faster stop. 0.22 = quick stop, minimal slide.
    */
-  FRICTION_LERP: 0.22,
+  FRICTION_LERP: 0.24,
   /** Speed multiplier while charging. */
-  CHARGE_SPEED_MULT: 0.35,
+  CHARGE_SPEED_MULT: 0.40,
   /**
    * Extra velocity decay per frame while charging and moving.
    * Makes charged movement feel weighted without changing top speed formula.
    */
-  CHARGE_EXTRA_FRICTION: 0.08,
+  CHARGE_EXTRA_FRICTION: 0.07,
   /** Frames a charge input is buffered before expiring (at 60fps). */
   CHARGE_BUFFER_FRAMES: 3,
   /** Frames a release input is buffered — so a slightly early tap still registers. */
   RELEASE_BUFFER_FRAMES: 6,
   /** Duration of brief movement lock on release (impact feel), in ms. */
-  RELEASE_LOCK_MS: 90,
+  RELEASE_LOCK_MS: 70,
   /**
    * Minimum hold duration before releasing Space counts as a release.
    * Prevents accidental release from a quick tap.
@@ -96,13 +96,13 @@ export const PRESSURE = {
 
 export const BREAK = {
   /** Pressure where danger feedback begins (before actual break chance starts). */
-  DANGER_ZONE_THRESHOLD: 46,
-  DANGER_THRESHOLD: 60,
+  DANGER_ZONE_THRESHOLD: 44,
+  DANGER_THRESHOLD: 58,
   /** Pressure above which the "unstable" warning visual kicks in (lower than break, higher visibility). */
-  UNSTABLE_VISUAL_THRESHOLD: 46,
+  UNSTABLE_VISUAL_THRESHOLD: 42,
   /** Pressure where instability escalates aggressively into near-break chaos. */
-  CRITICAL_VISUAL_THRESHOLD: 78,
-  MAX_CHANCE_PER_SEC: 0.55,
+  CRITICAL_VISUAL_THRESHOLD: 74,
+  MAX_CHANCE_PER_SEC: 0.58,
   DURATION_SEC: 1.4,
   AURA_LOSS_FRACTION: 0.7,
   /** Non-linear exponent for break risk escalation; higher = steeper endgame risk. */
@@ -161,26 +161,26 @@ export const NPC = {
   RADIUS: 16,
   SPEED: 60,
   WANDER_INTERVAL_SEC: 2.5,
-  GLANCE_AURA_THRESHOLD: 20,
+  GLANCE_AURA_THRESHOLD: 16,
   /** Above this aura value, crowd behavior becomes visibly dominant/fearful. */
-  DOMINANT_AURA_THRESHOLD: 50,
-  STEP_BACK_AURA_THRESHOLD: 50,
-  FLEE_SPEED: 120,
-  FLEE_DISTANCE: 180,
+  DOMINANT_AURA_THRESHOLD: 46,
+  STEP_BACK_AURA_THRESHOLD: 46,
+  FLEE_SPEED: 132,
+  FLEE_DISTANCE: 195,
   /** Additional personal space granted to very strong aura players. */
-  MAX_EXTRA_SPACE_FROM_AURA: 170,
+  MAX_EXTRA_SPACE_FROM_AURA: 180,
   /** If player aura is weak, crowd is willing to move this close. */
   CROWD_IN_DISTANCE_LOW_AURA: 105,
   /** Radius where unstable players cause crowd hesitation. */
-  UNSTABLE_HESITATE_RADIUS: 230,
+  UNSTABLE_HESITATE_RADIUS: 250,
   DRAMATIC_THRESHOLD: 60,
   DRAMATIC_FLEE_SPEED: 320,
-  DRAMATIC_FLEE_DURATION_SEC: 1.1,
+  DRAMATIC_FLEE_DURATION_SEC: 1.2,
   /** Radius of dramatic reaction on break (smaller, more personal). */
-  BREAK_DRAMATIC_RADIUS: 220,
+  BREAK_DRAMATIC_RADIUS: 240,
   /** Radius of dramatic reaction on strong release (wider). */
-  RELEASE_STRONG_DRAMATIC_RADIUS: 560,
-  RELEASE_WEAK_DRAMATIC_RADIUS: 280,
+  RELEASE_STRONG_DRAMATIC_RADIUS: 600,
+  RELEASE_WEAK_DRAMATIC_RADIUS: 320,
 } as const;
 
 export const ROUND = {
@@ -198,6 +198,105 @@ export const CAMERA = {
   ZOOM_LERP: 0.04,
   /** Extra zoom added when pressure is dangerous. */
   ZOOM_PRESSURE_BONUS: 0.04,
+} as const;
+
+/**
+ * Presentation-only tuning for the silhouette visual identity.
+ * Keep gameplay logic out of this block.
+ */
+export const VISUALS = {
+  PALETTE: {
+    PLAYER_CORE: 0x1b2232,
+    PLAYER_CHARGE: 0x26324a,
+    PLAYER_DANGER: 0x4a2733,
+    PLAYER_RIM: 0xf3f8ff,
+    NPC_CORE: 0x3b4250,
+    NPC_ALERT: 0x54444b,
+    NPC_RING: 0x6d7788,
+    AURA_COOL: 0x6dbbff,
+    AURA_WARM: 0xffbf62,
+    AURA_UNSTABLE: 0xff4b73,
+    AURA_RELEASE: 0xb2f0ff,
+    AURA_BREAK: 0xff4165,
+  },
+  PLAYER: {
+    SHADOW_BASE_ALPHA: 0.3,
+    SHADOW_MIN_ALPHA: 0.12,
+    SHADOW_MAX_ALPHA: 0.42,
+    SHADOW_WIDTH: 3.0,
+    SHADOW_HEIGHT: 1.34,
+    SHADOW_AURA_GROWTH: 0.88,
+    SHADOW_CORE_ALPHA: 0.18,
+    SHADOW_CORE_WIDTH: 1.78,
+    SHADOW_CORE_HEIGHT: 0.76,
+    ANCHOR_BASE_ALPHA: 0.17,
+    ANCHOR_CHARGE_ALPHA: 0.34,
+    ANCHOR_CORE_ALPHA: 0.26,
+    ANCHOR_BASE_SCALE: 1.0,
+    ANCHOR_PULSE_SCALE: 1.42,
+    AURA_CORE_SIZE: 3.4,
+    AURA_MID_SIZE: 5.6,
+    AURA_OUTER_SIZE: 8.2,
+    AURA_OUTER_STABLE_ALPHA: 0.2,
+    AURA_MID_STABLE_ALPHA: 0.28,
+    AURA_CORE_STABLE_ALPHA: 0.32,
+    AURA_OUTER_UNSTABLE_ALPHA: 0.46,
+    AURA_MID_UNSTABLE_ALPHA: 0.62,
+    AURA_CORE_UNSTABLE_ALPHA: 0.58,
+    BODY_TORSO_WIDTH: 1.38,
+    BODY_TORSO_HEIGHT: 1.95,
+    BODY_HEAD_WIDTH: 0.88,
+    BODY_HEAD_HEIGHT: 0.78,
+    BODY_SHELL_WIDTH: 1.56,
+    BODY_SHELL_HEIGHT: 2.16,
+    BODY_CHEST_WIDTH: 0.74,
+    BODY_CHEST_HEIGHT: 0.46,
+    BODY_BASE_COLOR: 0x1b2232,
+    BODY_CHARGE_COLOR: 0x26324a,
+    BODY_DANGER_COLOR: 0x4a2733,
+    BODY_SHELL_COLOR: 0x0d111c,
+    BODY_CHEST_COLOR: 0xf5f9ff,
+    RIM_COLOR: 0xf3f8ff,
+    RIM_BASE_ALPHA: 0.24,
+    RIM_FACING_SHIFT: 3.2,
+    LOW_AURA_ALPHA_MULT: 0.72,
+    UNSTABLE_WARP_DEGREES: 18,
+    UNSTABLE_AURA_OFFSET: 3.6,
+    RELEASE_BLOOM_COLOR: 0x9fe8ff,
+    BREAK_COLLAPSE_COLOR: 0xff4062,
+    HEARTBEAT_START_CRITICAL: 0.56,
+    HEARTBEAT_FREQ: 0.0105,
+    HEARTBEAT_SPIKE_SCALE: 0.24,
+    SHADOW_UNSTABLE_DESYNC_Y: 1.8,
+    PERFECT_HUSH_TIMESCALE: 0.30,
+    PERFECT_HUSH_MS: 42,
+    MOVE_ANIM_THRESHOLD: 0.16,
+    MOVE_BOB_AMPLITUDE: 1.2,
+    MOVE_BOB_SPEED: 0.022,
+    MOVE_LEAN_DEG: 8.2,
+    MOVE_SCALE_BOOST: 0.04,
+  },
+  NPC: {
+    SHADOW_ALPHA: 0.18,
+    SHADOW_WIDTH: 2.2,
+    SHADOW_HEIGHT: 1.05,
+    RING_IDLE_ALPHA: 0.06,
+    RING_ATTENTION_ALPHA: 0.18,
+    RING_ALERT_ALPHA: 0.26,
+    BODY_WIDTH: 1.08,
+    BODY_HEIGHT: 1.52,
+    HEAD_WIDTH: 0.7,
+    HEAD_HEIGHT: 0.58,
+    BODY_RIM_WIDTH: 1.18,
+    BODY_RIM_HEIGHT: 1.72,
+    BODY_RIM_ALPHA: 0.14,
+    BASE_SCALE: 0.92,
+    MAX_LEAN_DEG: 18,
+    VARIANT_SCALE_JITTER: 0.09,
+    IDLE_SWAY_DEG: 4.2,
+    LOOK_MARKER_ALPHA: 0.4,
+    TINT_MIX: 0.05,
+  },
 } as const;
 
 /**
@@ -219,16 +318,16 @@ export const HAZARD_NOISE_PULSE = {
   CATEGORY: "core_pressure" as const,
 
   /** How long before the first pulse can fire (ms). Gives player time to settle. */
-  FIRST_FIRE_DELAY_MS: 10_000,
+  FIRST_FIRE_DELAY_MS: 12_000,
 
   /** Minimum delay between pulses (ms). */
-  COOLDOWN_MS: 9_000,
+  COOLDOWN_MS: 10_000,
 
   /** Maximum ± jitter added to cooldown so pulses don't feel metronome. */
   COOLDOWN_JITTER_MS: 3_000,
 
   /** Duration of the telegraph phase (ms). Ring pulses at origin, player warned. */
-  TELEGRAPH_MS: 1_400,
+  TELEGRAPH_MS: 1_500,
 
   /** Duration of the expanding wave phase (ms). */
   WAVE_MS: 900,
@@ -243,13 +342,13 @@ export const HAZARD_NOISE_PULSE = {
    * Pressure added to the player when the wave passes through them while charging.
    * Not added if the player is NOT charging — reward for dropping charge early.
    */
-  PRESSURE_HIT: 22,
+  PRESSURE_HIT: 20,
 
   /**
    * Additional pressure multiplier when the player is already in the danger zone
    * (pressure > BREAK.DANGER_THRESHOLD). Slightly more punishing at high risk.
    */
-  DANGER_PRESSURE_MULTIPLIER: 1.35,
+  DANGER_PRESSURE_MULTIPLIER: 1.30,
 
   /**
    * Radius of the telegraphed "warning zone" ring drawn at wave origin.
@@ -279,16 +378,16 @@ export const HAZARD_CHAOS_LAUNCHPAD = {
   ENABLED: true,
 
   /** Delay before the first chaos roll (ms). */
-  FIRST_ROLL_DELAY_MS: 18_000,
+  FIRST_ROLL_DELAY_MS: 20_000,
 
   /** Base interval between chaos rolls (ms). */
-  ROLL_INTERVAL_MS: 7_000,
+  ROLL_INTERVAL_MS: 8_000,
 
   /** +- jitter added to each roll interval so timing is less predictable. */
   ROLL_JITTER_MS: 2_000,
 
   /** Chance to trigger on each scheduler roll. Keep low so chaos stays rare. */
-  BASE_TRIGGER_CHANCE: 0.06,
+  BASE_TRIGGER_CHANCE: 0.05,
 
   /** Hard cap for normal chaos triggers in one round. */
   MAX_TRIGGERS_PER_ROUND: 1,
@@ -297,7 +396,7 @@ export const HAZARD_CHAOS_LAUNCHPAD = {
    * Very small chance to allow one extra chaos trigger after hitting the cap.
    * This creates occasional story outlier rounds without normalizing spam.
    */
-  OUTLIER_SECOND_TRIGGER_CHANCE: 0.04,
+  OUTLIER_SECOND_TRIGGER_CHANCE: 0.03,
 
   /** Minimum spacing between chaos triggers (ms). */
   COOLDOWN_MS: 26_000,
@@ -399,6 +498,28 @@ export const MULTIPLAYER_NET = {
 } as const;
 
 /**
+ * Multiplayer world-space readability tuning.
+ * Presentation only.
+ */
+export const MULTIPLAYER_READABILITY = {
+  LEADER_AURA_BOOST_SCALE: 1.14,
+  LEADER_BEACON_ALPHA: 0.22,
+  LEADER_NAME_COLOR: "#ffe48a",
+  UNSTABLE_JITTER_PX: 6.2,
+  UNSTABLE_FLICKER_MIN: 0.22,
+  UNSTABLE_FLICKER_MAX: 0.86,
+  BROKEN_SQUASH_Y: 0.72,
+  RELEASED_BLOOM_SCALE: 1.25,
+  NPC_ATTENTION_RING_ALPHA: 0.34,
+  NPC_BACKOFF_RING_ALPHA: 0.44,
+  EVENT_WORLD_BURST_DURATION_MS: 460,
+  REMOTE_MOVE_THRESHOLD_PX_PER_SEC: 44,
+  REMOTE_MOVE_BOB_AMPLITUDE: 1.8,
+  REMOTE_MOVE_BOB_SPEED: 0.018,
+  REMOTE_MOVE_TILT_DEG: 4.8,
+} as const;
+
+/**
  * Session lore: lightweight callback humor across rounds.
  * Session-scoped only (no persistence/profile data).
  */
@@ -411,6 +532,6 @@ export const SESSION_LORE = {
 } as const;
 
 export const NPC_COLORS = [
-  0xe8b4b8, 0xa8d8a8, 0xb8cce8, 0xf0d8a8, 0xd0a8d8,
-  0xa8e8e8, 0xe8d0a8, 0xb0b0d8,
+  0x7f8898, 0x7f8b84, 0x808ea4, 0x8e8780, 0x887d8f,
+  0x7f8f8f, 0x91897d, 0x7d8094,
 ] as const;

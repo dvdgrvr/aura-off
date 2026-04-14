@@ -10,74 +10,84 @@ Make the single-player core loop feel tense, readable, and fun before adding new
 ## Highest Priority
 
 ### Controls & Feel
-- [ ] Movement feels responsive and not floaty
-- [ ] Charging slightly slows player movement
-- [ ] Charge input feels instant
-- [ ] Release feels instant and satisfying
-- [ ] Break causes short control interruption
-- [ ] Add input forgiveness where helpful
+- [x] Movement feels responsive and not floaty
+- [x] Charging slightly slows player movement
+- [x] Charge input feels instant
+- [x] Release feels instant and satisfying
+- [x] Break causes short control interruption
+- [x] Add input forgiveness where helpful
 
 ### Charging & Pressure Feedback
-- [ ] Aura visually scales clearly across tiers
-- [ ] High aura feels intense
-- [ ] Pressure clearly communicates danger
-- [ ] Add unstable warning near break
+- [x] Aura visually scales clearly across tiers
+- [x] High aura feels intense
+- [x] Pressure clearly communicates danger
+- [x] Add unstable warning near break
 
 ### Break State
-- [ ] Add visible pre-break instability
-- [ ] Make break feel public and funny
-- [ ] Add visual collapse/fizzle effect
-- [ ] NPCs visibly react to break
-- [ ] Add short recovery window after break
+- [x] Add visible pre-break instability
+- [x] Make break feel public and funny
+- [x] Add visual collapse/fizzle effect
+- [x] NPCs visibly react to break
+- [x] Add short recovery window after break
 
 ### Release Payoff
-- [ ] Strong release clearly stronger than weak release
-- [ ] Add shockwave effect
-- [ ] NPCs react dramatically to release
-- [ ] Add screen shake or hit stop
-- [ ] Add clear crowd spacing change after release
+- [x] Strong release clearly stronger than weak release
+- [x] Add shockwave effect
+- [x] NPCs react dramatically to release
+- [x] Add screen shake or hit stop
+- [x] Add clear crowd spacing change after release
 
 ### NPC Reactions
-- [ ] NPCs turn to face player when aura rises
-- [ ] NPCs pause / acknowledge player
-- [ ] NPCs step back at higher aura
-- [ ] NPCs react strongly to release
-- [ ] NPCs react to break
+- [x] NPCs turn to face player when aura rises
+- [x] NPCs pause / acknowledge player
+- [x] NPCs step back at higher aura
+- [x] NPCs react strongly to release
+- [x] NPCs react to break
 
 ### HUD Clarity
-- [ ] Aura bar is easy to read at a glance
-- [ ] Pressure bar clearly shows danger
-- [ ] Add aura tier label if useful
-- [ ] Add short contextual callout text without clutter
+- [x] Keep HUD minimal and intentional
+- [x] Keep timer highly readable
+- [x] Use subtle state cues (tier/danger) instead of large bars
+- [x] Keep callout text brief and low-clutter
 
 ---
 
 ## Next Phase
 
 ### First Fair Hazard
-- [ ] Implement Noise Pulse or Spotlight
-- [ ] Add telegraph / warning
-- [ ] Integrate with pressure system
-- [ ] Confirm it adds tension, not noise
+- [x] Implement Noise Pulse or Spotlight
+- [x] Add telegraph / warning
+- [x] Integrate with pressure system
+- [x] Confirm it adds tension, not noise
 
 ---
 
 ## Later Phase
 
 ### Rare Chaos
-- [ ] Add Launch Pad / Catapult hazard
-- [ ] Keep it rare and dramatic
-- [ ] Confirm it creates funny moments without ruining fairness
+- [x] Add Launch Pad / Catapult hazard
+- [x] Keep it rare and dramatic
+- [x] Confirm it creates funny moments without ruining fairness
 
 ### Multiplayer Preparation
-- [ ] Clean state boundaries
-- [ ] Define syncable player state
-- [ ] Prepare room/join architecture
+- [x] Clean state boundaries
+- [x] Define syncable player state
+- [x] Prepare room/join architecture
 
 ### Session Lore
-- [ ] Track basic session stats
-- [ ] Add short end-of-round summaries
-- [ ] Keep it lightweight and funny
+- [x] Track basic session stats
+- [x] Add short end-of-round summaries
+- [x] Keep it lightweight and funny
+
+## Visual Identity Pass
+- [x] Replace player circles with minimal silhouette bodies
+- [x] Add shadow separation to create levitation feel
+- [x] Add ground anchor ring for readability
+- [x] Make aura the primary visual identity layer
+- [x] Make unstable state impossible to miss
+- [x] Make break and release visually distinct
+- [x] Upgrade NPCs from circles to simple crowd silhouettes
+- [x] Improve depth with shadows, layering, and light contrast
 
 ---
 

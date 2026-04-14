@@ -3,8 +3,10 @@ import { WebSocketServer, WebSocket } from "ws";
 import { ARENA, AURA, BREAK, PLAYER, PRESSURE, RELEASE } from "../src/game/config/GameConfig";
 import {
   ClientToServerMessage,
+  DisruptPulseState,
   MultiplayerEvent,
   NetPlayerState,
+  ReadabilityState,
   RoomSnapshot,
   ServerToClientMessage,
 } from "../src/shared/protocol";
@@ -29,6 +31,13 @@ const PLAYER_SPEED_MP = PLAYER.SPEED * 0.95;
 const PRESSURE_PLAYER_RADIUS = 240;
 const ENABLE_NET_DEBUG = process.env.NET_DEBUG === "1";
 const LAST_EVENTS_MAX = 3;
+const DISRUPT_PULSE = {
+  COOLDOWN_MS: 10_000,
+  TELEGRAPH_MS: 650,
+  RADIUS: 210,
+  PRESSURE_BASE: 10,
+  PRESSURE_CHARGING_BONUS: 10,
+} as const;
 
 type InputIntent = {
   moveX: number;
@@ -43,6 +52,7 @@ type RoomPlayer = NetPlayerState & {
   connected: boolean;
   lastInputServerMs: number;
   lastClientSendMs?: number;
+  lastDisruptUseMs: number;
 };
 
 type RoomState = {
@@ -57,6 +67,7 @@ type RoomState = {
   npcs: ReturnType<typeof createRoomCrowd>;
   lastEvents: MultiplayerEvent[];
   eventSeq: number;
+  activeDisruptPulses: DisruptPulseState[];
 };
 
 const rooms = new Map<string, RoomState>();
@@ -105,6 +116,13 @@ function sanitizePlayerName(raw: string): string {
   return cleaned;
 }
 
+function readabilityStateForPlayer(player: RoomPlayer): ReadabilityState {
+  if (player.pressure >= BREAK.CRITICAL_VISUAL_THRESHOLD && player.isCharging) return "critical";
+  if (player.pressure >= BREAK.UNSTABLE_VISUAL_THRESHOLD && player.isCharging) return "unstable";
+  if (player.pressure >= BREAK.DANGER_ZONE_THRESHOLD) return "danger";
+  return "safe";
+}
+
 function getOrCreateRoom(code?: string): RoomState {
   const requested = code?.toUpperCase();
   if (requested && rooms.has(requested)) {
@@ -124,6 +142,7 @@ function getOrCreateRoom(code?: string): RoomState {
     npcs: createRoomCrowd(),
     lastEvents: [],
     eventSeq: 1,
+    activeDisruptPulses: [],
   };
   rooms.set(roomCode, room);
   return room;
@@ -146,6 +165,7 @@ function pushRoomEvent(
 function roomSnapshot(room: RoomState): RoomSnapshot {
   const serverNow = Date.now();
   return {
+    mode: "party_ffa",
     roomCode: room.code,
     hostId: room.hostId,
     phase: room.phase,
@@ -160,6 +180,7 @@ function roomSnapshot(room: RoomState): RoomSnapshot {
       pressure: p.pressure,
       score: p.score,
       rematchReady: p.rematchReady,
+      readabilityState: readabilityStateForPlayer(p),
     })),
     npcs: room.npcs.map((n) => ({
       id: n.id,
@@ -179,8 +200,10 @@ function roomSnapshot(room: RoomState): RoomSnapshot {
           })),
         }
       : undefined,
+    activeDisruptPulses: room.activeDisruptPulses.map((p) => ({ ...p })),
     timerSec: room.timerSec,
     winnerPlayerId: room.winnerPlayerId,
+    lastEndReason: room.lastEndReason,
     roundIndex: room.roundIndex,
   };
 }
@@ -228,6 +251,7 @@ function resetRoundPlayers(room: RoomState): void {
     p.aura = 0;
     p.pressure = 0;
     p.rematchReady = false;
+    p.readabilityState = "safe";
     p.input = { moveX: 0, moveY: 0, isCharging: false, wantsRelease: false };
   }
 }
@@ -239,6 +263,7 @@ function startRound(room: RoomState): void {
   room.lastEndReason = undefined;
   room.roundIndex += 1;
   room.lastEvents = [];
+  room.activeDisruptPulses = [];
   resetRoundPlayers(room);
   broadcast(room, { type: "round_started", payload: { roundIndex: room.roundIndex, durationSec: ROUND_DURATION_SEC } });
 }
@@ -248,6 +273,7 @@ function maybeEndRound(room: RoomState): void {
   const active = [...room.players.values()].filter((p) => !p.isBroken && !p.isReleased);
   if (active.length <= 1 && room.players.size >= MIN_PLAYERS_TO_START) {
     room.phase = "result";
+    room.activeDisruptPulses = [];
     room.winnerPlayerId = active[0]?.id;
     room.lastEndReason = "last_unbroken";
     broadcast(room, { type: "round_ended", payload: { winnerPlayerId: room.winnerPlayerId, reason: "last_unbroken" } });
@@ -255,6 +281,7 @@ function maybeEndRound(room: RoomState): void {
   }
   if (room.timerSec <= 0) {
     room.phase = "result";
+    room.activeDisruptPulses = [];
     room.lastEndReason = "timer";
     const sorted = [...room.players.values()].sort((a, b) => b.aura - a.aura);
     room.winnerPlayerId = sorted[0]?.id;
@@ -274,6 +301,40 @@ function tickRoom(room: RoomState): void {
   const attentionMap = buildAttentionPressureMapPerSec(players);
   const breakCascadeDeltas = new Map<string, number>();
   const releaseReliefDeltas = new Map<string, number>();
+
+  // Resolve active disrupt pulses (telegraph first, then pressure burst).
+  const pulsesToResolve: DisruptPulseState[] = [];
+  for (const pulse of room.activeDisruptPulses) {
+    if (pulse.phase === "telegraph") {
+      pulse.telegraphMsRemaining = Math.max(0, pulse.telegraphMsRemaining - DT_SEC * 1000);
+      if (pulse.telegraphMsRemaining <= 0) {
+        pulse.phase = "resolving";
+        pulsesToResolve.push(pulse);
+      }
+    }
+  }
+  if (pulsesToResolve.length > 0) {
+    for (const pulse of pulsesToResolve) {
+      const caster = room.players.get(pulse.casterPlayerId);
+      for (const target of players) {
+        if (target.id === pulse.casterPlayerId || target.isBroken || target.isReleased) continue;
+        const dx = target.position.x - pulse.x;
+        const dy = target.position.y - pulse.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > pulse.radius) continue;
+        const pressureHit =
+          DISRUPT_PULSE.PRESSURE_BASE + (target.input.isCharging ? DISRUPT_PULSE.PRESSURE_CHARGING_BONUS : 0);
+        target.pressure = clamp(target.pressure + pressureHit, 0, PRESSURE.MAX);
+      }
+      pushRoomEvent(room, {
+        type: "ability_resolve",
+        actorPlayerId: pulse.casterPlayerId,
+        actorName: caster?.name,
+        abilityType: "disrupt_pulse",
+      });
+    }
+    room.activeDisruptPulses = [];
+  }
 
   for (const p of players) {
     if (p.isBroken || p.isReleased) continue;
@@ -475,9 +536,11 @@ wss.on("connection", (ws) => {
         pressure: 0,
         score: 0,
         rematchReady: false,
+        readabilityState: "safe",
         socket: ws,
         connected: true,
         lastInputServerMs: Date.now(),
+        lastDisruptUseMs: -999_999,
         input: { moveX: 0, moveY: 0, isCharging: false, wantsRelease: false },
       };
       room.players.set(playerId, player);
@@ -536,6 +599,62 @@ wss.on("connection", (ws) => {
     if (msg.type === "rematch_ready") {
       player.rematchReady = msg.payload.ready;
       tryAutoRematch(room);
+      return;
+    }
+
+    if (msg.type === "ability_use") {
+      if (msg.payload.abilityType !== "disrupt_pulse") return;
+      if (room.phase !== "in_round") {
+        pushRoomEvent(room, {
+          type: "ability_denied",
+          actorPlayerId: player.id,
+          actorName: player.name,
+          abilityType: "disrupt_pulse",
+          reason: "round_inactive",
+        });
+        return;
+      }
+      if (player.isBroken || player.isReleased) {
+        pushRoomEvent(room, {
+          type: "ability_denied",
+          actorPlayerId: player.id,
+          actorName: player.name,
+          abilityType: "disrupt_pulse",
+          reason: "player_inactive",
+        });
+        return;
+      }
+
+      const now = Date.now();
+      const remaining = DISRUPT_PULSE.COOLDOWN_MS - (now - player.lastDisruptUseMs);
+      if (remaining > 0) {
+        pushRoomEvent(room, {
+          type: "ability_denied",
+          actorPlayerId: player.id,
+          actorName: player.name,
+          abilityType: "disrupt_pulse",
+          reason: "cooldown",
+        });
+        return;
+      }
+
+      player.lastDisruptUseMs = now;
+      const pulse: DisruptPulseState = {
+        id: room.eventSeq,
+        casterPlayerId: player.id,
+        x: player.position.x,
+        y: player.position.y,
+        radius: DISRUPT_PULSE.RADIUS,
+        phase: "telegraph",
+        telegraphMsRemaining: DISRUPT_PULSE.TELEGRAPH_MS,
+      };
+      room.activeDisruptPulses.push(pulse);
+      pushRoomEvent(room, {
+        type: "ability_telegraph",
+        actorPlayerId: player.id,
+        actorName: player.name,
+        abilityType: "disrupt_pulse",
+      });
       return;
     }
 

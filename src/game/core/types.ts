@@ -36,6 +36,10 @@ export interface RoundResult {
   releaseAura: number;
   score: number;
   broke: boolean;
+  mode?: "training" | "match";
+  outcomeReason?: string;
+  trainingCompletedSteps?: number;
+  trainingTotalSteps?: number;
   perfectRelease?: boolean;
   perfectMultiplier?: number;
   loreTitle?: string;

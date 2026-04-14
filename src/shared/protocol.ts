@@ -1,6 +1,9 @@
 import { Vec2 } from "../game/core/types";
 
 export type RoomPhase = "lobby" | "in_round" | "result";
+export type RoomMode = "party_ffa";
+export type ReadabilityState = "safe" | "danger" | "unstable" | "critical";
+export type AbilityType = "disrupt_pulse";
 
 export interface NetPlayerState {
   id: string;
@@ -13,6 +16,7 @@ export interface NetPlayerState {
   pressure: number;
   score: number;
   rematchReady: boolean;
+  readabilityState: ReadabilityState;
 }
 
 export type NpcReaction = "idle" | "watching" | "hesitating" | "stepping_back";
@@ -24,7 +28,14 @@ export interface NpcState {
   intensity: number; // 0..1
 }
 
-export type MultiplayerEventType = "break" | "release" | "perfect_release" | "cascade";
+export type MultiplayerEventType =
+  | "break"
+  | "release"
+  | "perfect_release"
+  | "cascade"
+  | "ability_telegraph"
+  | "ability_resolve"
+  | "ability_denied";
 
 export interface MultiplayerEvent {
   id: number;
@@ -33,7 +44,19 @@ export interface MultiplayerEvent {
   actorName?: string;
   targetPlayerId?: string;
   targetName?: string;
+  abilityType?: AbilityType;
+  reason?: string;
   timerSec: number;
+}
+
+export interface DisruptPulseState {
+  id: number;
+  casterPlayerId: string;
+  x: number;
+  y: number;
+  radius: number;
+  phase: "telegraph" | "resolving";
+  telegraphMsRemaining: number;
 }
 
 export interface RoomNetDebugPlayer {
@@ -49,6 +72,7 @@ export interface RoomNetDebug {
 }
 
 export interface RoomSnapshot {
+  mode: RoomMode;
   roomCode: string;
   hostId: string;
   phase: RoomPhase;
@@ -56,8 +80,10 @@ export interface RoomSnapshot {
   npcs: NpcState[];
   lastEvents: MultiplayerEvent[];
   netDebug?: RoomNetDebug;
+  activeDisruptPulses: DisruptPulseState[];
   timerSec: number;
   winnerPlayerId?: string;
+  lastEndReason?: "timer" | "last_unbroken";
   roundIndex: number;
 }
 
@@ -83,6 +109,10 @@ export type ClientToServerMessage =
   | {
       type: "rematch_ready";
       payload: { ready: boolean };
+    }
+  | {
+      type: "ability_use";
+      payload: { abilityType: AbilityType };
     }
   | {
       type: "leave_room";

@@ -20,6 +20,7 @@ import {
   RELEASE,
   CAMERA,
   HAZARD_NOISE_PULSE,
+  VISUALS,
 } from "../config/GameConfig";
 import { CoreGameplaySnapshot, GameplaySyncEvent } from "../core/multiplayerContracts";
 import { HazardScheduler } from "../systems/HazardScheduler";
@@ -46,6 +47,10 @@ export class ArenaScene extends Phaser.Scene {
   // --- Scene flags ---
   private breakLocked: boolean = false;
   private roundEnded: boolean = false;
+  private playMode: "training" | "match" = "match";
+  private trainingStep = 0;
+  private sawUnstableInTraining = false;
+  private trainingObjectiveText?: Phaser.GameObjects.Text;
 
   // --- Visual objects ---
   private _arenaFloor!: Phaser.GameObjects.Rectangle;
@@ -86,12 +91,31 @@ export class ArenaScene extends Phaser.Scene {
     super({ key: "ArenaScene" });
   }
 
+  init(data?: { mode?: "training" | "match" }): void {
+    this.playMode = data?.mode ?? "match";
+    this.trainingStep = 0;
+    this.sawUnstableInTraining = false;
+  }
+
   create(): void {
     this._buildArena();
     this._buildVignette();
     this._initSystems();
     this._initEntities();
     this.hud = new Hud(this);
+    if (this.playMode === "training") {
+      this.trainingObjectiveText = this.add
+        .text(ARENA.WIDTH / 2, 26, "Training 1/3: Hold SPACE and build aura to Building tier", {
+          fontFamily: "Verdana, sans-serif",
+          fontSize: "16px",
+          color: "#cbe2ff",
+          stroke: "#041024",
+          strokeThickness: 2,
+        })
+        .setOrigin(0.5, 0)
+        .setScrollFactor(0)
+        .setDepth(31);
+    }
 
     // Camera setup — keep player centered
     this.cameras.main.setZoom(CAMERA.ZOOM_DEFAULT);
@@ -113,39 +137,83 @@ export class ArenaScene extends Phaser.Scene {
 
   private _buildArena(): void {
     const { WIDTH: W, HEIGHT: H, BORDER } = ARENA;
+    const hasArenaArt = this.textures.exists("arena_bg_futuristic");
 
-    this.add.rectangle(W / 2, H / 2, W, H, 0x0e0e1a).setDepth(0);
+    if (hasArenaArt) {
+      this.add.image(W / 2, H / 2, "arena_bg_futuristic").setDisplaySize(W, H).setDepth(0);
+      this.add.rectangle(W / 2, H / 2, W, H, 0x0d1324, 0.28).setDepth(0);
+    } else {
+      // Backdrop base
+      this.add.rectangle(W / 2, H / 2, W, H, 0x0b0f1a).setDepth(0);
+      // Large atmospheric floor gradients (cheap depth trick).
+      this.add.ellipse(W / 2, H / 2 + 10, W * 0.92, H * 0.78, 0x141b2d, 0.78).setDepth(0);
+      this.add.ellipse(W / 2, H / 2 - 36, W * 0.56, H * 0.38, 0x1d2b48, 0.24).setDepth(0);
+    }
 
     this._arenaFloor = this.add
-      .rectangle(W / 2, H / 2, W - BORDER * 2, H - BORDER * 2, 0x181830)
+      .rectangle(W / 2, H / 2, W - BORDER * 2, H - BORDER * 2, 0x121a2b, hasArenaArt ? 0.16 : 1)
       .setDepth(1);
+
+    if (!hasArenaArt) {
+      // Subtle floor texture lines for visual richness without assets.
+      const floorLines = this.add.graphics().setDepth(1);
+      floorLines.lineStyle(1, 0x202d46, 0.24);
+      const lineGap = 34;
+      for (let x = BORDER; x <= W - BORDER; x += lineGap) {
+        floorLines.lineBetween(x, BORDER, x - 46, H - BORDER);
+      }
+      floorLines.lineStyle(1, 0x162238, 0.2);
+      for (let y = BORDER + 10; y <= H - BORDER; y += 44) {
+        floorLines.lineBetween(BORDER, y, W - BORDER, y);
+      }
+    }
 
     // Border
     const border = this.add.graphics().setDepth(1);
-    border.lineStyle(2, 0x2a3a5a, 1);
+    border.lineStyle(2, 0x324768, 0.95);
     border.strokeRect(BORDER, BORDER, W - BORDER * 2, H - BORDER * 2);
+    border.lineStyle(1, 0x6287c2, 0.28);
+    border.strokeRect(BORDER + 8, BORDER + 8, W - BORDER * 2 - 16, H - BORDER * 2 - 16);
 
     // Center zone
     this.centerZone = this.add
-      .ellipse(W / 2, H / 2, ARENA.CENTER_ZONE_RADIUS * 2, ARENA.CENTER_ZONE_RADIUS * 2, 0x2233aa, 0.10)
+      .ellipse(W / 2, H / 2, ARENA.CENTER_ZONE_RADIUS * 2.3, ARENA.CENTER_ZONE_RADIUS * 1.56, 0x2845aa, 0.12)
       .setDepth(2);
 
-    const cg = this.add.graphics().setDepth(2);
-    cg.lineStyle(1, 0x4466cc, 0.35);
-    cg.strokeCircle(W / 2, H / 2, ARENA.CENTER_ZONE_RADIUS);
+    if (!hasArenaArt) {
+      const cg = this.add.graphics().setDepth(2);
+      cg.lineStyle(2, 0x4a70d6, 0.44);
+      cg.strokeEllipse(
+        W / 2,
+        H / 2,
+        ARENA.CENTER_ZONE_RADIUS * 2.1,
+        ARENA.CENTER_ZONE_RADIUS * 1.42
+      );
+      cg.lineStyle(1, 0x6b8be0, 0.24);
+      cg.strokeEllipse(
+        W / 2,
+        H / 2,
+        ARENA.CENTER_ZONE_RADIUS * 1.34,
+        ARENA.CENTER_ZONE_RADIUS * 0.9
+      );
+    }
 
     // Corner marks
-    const corners = [
-      [BORDER, BORDER], [W - BORDER, BORDER],
-      [BORDER, H - BORDER], [W - BORDER, H - BORDER],
-    ] as const;
-    const cg2 = this.add.graphics().setDepth(1);
-    cg2.lineStyle(3, 0x334466, 0.9);
-    for (const [cx, cy] of corners) {
-      const s = 18;
-      const dx = cx < W / 2 ? s : -s;
-      const dy = cy < H / 2 ? s : -s;
-      cg2.strokePoints([{ x: cx, y: cy + dy }, { x: cx, y: cy }, { x: cx + dx, y: cy }], false);
+    if (!hasArenaArt) {
+      const corners = [
+        [BORDER, BORDER], [W - BORDER, BORDER],
+        [BORDER, H - BORDER], [W - BORDER, H - BORDER],
+      ] as const;
+      const cg2 = this.add.graphics().setDepth(1);
+      cg2.lineStyle(3, 0x3e5f8f, 0.95);
+      for (const [cx, cy] of corners) {
+        const s = 28;
+        const dx = cx < W / 2 ? s : -s;
+        const dy = cy < H / 2 ? s : -s;
+        cg2.strokePoints([{ x: cx, y: cy + dy }, { x: cx, y: cy }, { x: cx + dx, y: cy }], false);
+        cg2.fillStyle(0x7ca7ff, 0.26);
+        cg2.fillCircle(cx, cy, 2);
+      }
     }
 
     // Release rings
@@ -211,7 +279,7 @@ export class ArenaScene extends Phaser.Scene {
     this.zoomOverrideTarget = -1;
     this.cameras.main.setZoom(CAMERA.ZOOM_DEFAULT);
     this.hazardScheduler.reset();
-    this.hud.showCallout(this, "GO!", "#44ff88", 900);
+    this.hud.showCallout(this, this.playMode === "training" ? "TRAINING START" : "GO!", "#44ff88", 900);
   }
 
   update(_time: number, delta: number): void {
@@ -253,6 +321,7 @@ export class ArenaScene extends Phaser.Scene {
       dtSec
     );
     this._applyPlayerVisuals();
+    this._updateTrainingProgress();
     this._updateHud();
 
     // Hazard tick — runs after player/pressure update so hit pressure is applied this frame
@@ -334,7 +403,14 @@ export class ArenaScene extends Phaser.Scene {
     if (result.perfectRelease) {
       this.hud.showCallout(this, "PERFECT RELEASE!", "#ffef66", 1250);
       this._playImpactBurst(pos.x, pos.y, 0xfff3a8, RELEASE.STRONG_SHOCKWAVE_PRIMARY, 520);
+      this._playImpactBurst(pos.x, pos.y, VISUALS.PALETTE.AURA_RELEASE, RELEASE.STRONG_SHOCKWAVE_PRIMARY * 0.68, 420);
       this.cameras.main.shake(240, 0.012);
+      this.time.timeScale = VISUALS.PLAYER.PERFECT_HUSH_TIMESCALE;
+      setTimeout(() => {
+        if (this.scene.isActive("ArenaScene")) {
+          this.time.timeScale = 1;
+        }
+      }, VISUALS.PLAYER.PERFECT_HUSH_MS);
     }
 
     this.crowd.triggerReleaseDramatic(this, pos, isStrong);
@@ -362,6 +438,22 @@ export class ArenaScene extends Phaser.Scene {
       score: 0,
       broke: sim.brokeThisRound,
     };
+    finalResult.mode = this.playMode;
+    if (!finalResult.outcomeReason) {
+      finalResult.outcomeReason = finalResult.broke
+        ? "Broke under pressure"
+        : finalResult.releaseAura > 0
+          ? "Release landed in time"
+          : "Timer ended before release";
+    }
+    if (this.playMode === "training") {
+      finalResult.trainingCompletedSteps = this.trainingStep;
+      finalResult.trainingTotalSteps = 3;
+      finalResult.outcomeReason =
+        this.trainingStep >= 3
+          ? "Training complete: timing fundamentals learned"
+          : `Training progress: ${this.trainingStep}/3 steps completed`;
+    }
     const lore = sessionLore.finalizeRound(finalResult);
     finalResult.loreTitle = lore.title;
     finalResult.loreTags = lore.tags;
@@ -369,6 +461,24 @@ export class ArenaScene extends Phaser.Scene {
     this.time.delayedCall(RELEASE.ROUND_END_DELAY_MS, () => {
       this.scene.start("ResultScene", { result: finalResult });
     });
+  }
+
+  private _updateTrainingProgress(): void {
+    if (this.playMode !== "training" || this.roundEnded) return;
+    const sim = this._sim();
+    const isUnstable = sim.pressureValue >= BREAK.UNSTABLE_VISUAL_THRESHOLD && this.player.isCharging;
+
+    if (this.trainingStep === 0 && sim.auraValue >= AURA.TIERS[1].min) {
+      this.trainingStep = 1;
+      this.hud.showCallout(this, "Step 1 complete: aura built", "#9ce6ff", 900);
+      this.trainingObjectiveText?.setText("Training 2/3: Push until unstable warning appears");
+    }
+    if (this.trainingStep === 1 && isUnstable) {
+      this.sawUnstableInTraining = true;
+      this.trainingStep = 2;
+      this.hud.showCallout(this, "Step 2 complete: unstable recognized", "#ffb7c3", 980);
+      this.trainingObjectiveText?.setText("Training 3/3: Release before a break");
+    }
   }
 
   // ── Per-frame visuals ────────────────────────────────────────────────────
@@ -407,10 +517,13 @@ export class ArenaScene extends Phaser.Scene {
     // Floor pulse: glow under player that grows with aura
     const pos = this.player.getPosition();
     this.floorPulse.setPosition(pos.x, pos.y);
-    if (this.player.isCharging && sim.auraNormalized > 0.25) {
+    if (sim.auraNormalized > 0.08) {
       const tierColor = AURA.TIERS[Math.min(tierIndex, AURA.TIERS.length - 1)].color;
-      const size = 50 + sim.auraNormalized * 240;
-      const alpha = 0.08 + sim.auraNormalized * 0.22 + Math.sin(Date.now() * 0.003) * 0.05;
+      const unstableBoost = isUnstable ? 0.14 + criticalIntensity * 0.18 : 0;
+      const size = 56 + sim.auraNormalized * 250 + (isUnstable ? 22 : 0);
+      const alphaBase = this.player.isCharging ? 0.10 : 0.04;
+      const alphaPulse = Math.sin(Date.now() * (isUnstable ? 0.012 : 0.0038)) * (isUnstable ? 0.11 : 0.04);
+      const alpha = alphaBase + sim.auraNormalized * 0.18 + unstableBoost + alphaPulse;
       this.floorPulse
         .setFillStyle(tierColor, Math.min(0.36, alpha))
         .setDisplaySize(size, size * 0.5); // squashed ellipse for perspective feel
@@ -422,11 +535,11 @@ export class ArenaScene extends Phaser.Scene {
   private _updateArenaVfx(): void {
     const sim = this._sim();
     // Center zone brightens with aura
-    if (sim.auraValue > 35) {
-      const pulse = 0.07 + sim.auraNormalized * 0.22 + Math.sin(Date.now() * 0.003) * 0.05;
+    if (sim.auraValue > 20) {
+      const pulse = 0.05 + sim.auraNormalized * 0.24 + Math.sin(Date.now() * 0.003) * 0.04;
       this.centerZone.setFillStyle(0x2244bb, pulse);
     } else {
-      this.centerZone.setFillStyle(0x2233aa, 0.07);
+      this.centerZone.setFillStyle(0x2233aa, 0.05);
     }
 
     // Vignette: dark edge overlay that intensifies with aura + pressure danger
@@ -568,11 +681,13 @@ export class ArenaScene extends Phaser.Scene {
       .filter((obj) => !hudSet.has(obj));
 
     // Main (world) camera ignores HUD objects
+    this.cameras.main.setRoundPixels(true);
     this.cameras.main.ignore(hudObjects);
 
     // HUD camera: zoom=1, no scroll — renders only HUD objects
     const hudCam = this.cameras.add(0, 0, W, H);
     hudCam.setScroll(0, 0);
+    hudCam.setRoundPixels(true);
     hudCam.ignore(worldObjects);
   }
 
@@ -636,6 +751,9 @@ export class ArenaScene extends Phaser.Scene {
     }
 
     if (event.type === "release_committed") {
+      if (this.playMode === "training") {
+        this.trainingStep = Math.max(this.trainingStep, 3);
+      }
       this._triggerRelease(event.result, event.isStrong);
       return true;
     }

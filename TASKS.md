@@ -135,9 +135,9 @@ Required improvements:
 - make reactions to strong release and visible break more dramatic
 
 5. HUD clarity
-- improve aura and pressure readability
-- improve state and callout readability without clutter
-- keep the HUD minimal
+- keep the HUD minimal and intentional
+- keep timer readability high at a glance
+- favor subtle state cues and callouts over large bars
 
 Rules:
 - do not add multiplayer
