@@ -22,6 +22,7 @@ import { createRoomCrowd, npcPressureForPlayerPerSec, updateRoomCrowd } from "./
 
 const PORT = Number(process.env.PORT ?? 8787);
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
+const SERVER_WS_URL = process.env.SERVER_WS_URL ?? `ws://localhost:${PORT}`;
 const TICK_RATE = 20;
 const DT_SEC = 1 / TICK_RATE;
 const ROUND_DURATION_SEC = 45;
@@ -551,7 +552,7 @@ wss.on("connection", (ws) => {
         payload: {
           playerId,
           roomCode: room.code,
-          inviteUrl: `${CLIENT_ORIGIN}/?mode=mp&room=${room.code}`,
+          inviteUrl: `${CLIENT_ORIGIN}/?mode=mp&ws=${SERVER_WS_URL}&room=${room.code}`,
         },
       });
       broadcast(room, { type: "room_snapshot", payload: roomSnapshot(room) });
