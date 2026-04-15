@@ -33,14 +33,43 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Clear any existing button references from previous scene instances
+    this.buttons = [];
+
     this._hydrateDefaults();
     this._buildBackdrop();
     this._buildLayout();
     this._buildOnboardingIfNeeded();
     this._refreshFieldVisuals();
     this._attachKeyboard();
-    this.events.once("shutdown", () => this._detachKeyboard());
-    this.events.once("destroy", () => this._detachKeyboard());
+    this.events.once("shutdown", () => {
+      this._detachKeyboard();
+      this._cleanup();
+    });
+    this.events.once("destroy", () => {
+      this._detachKeyboard();
+      this._cleanup();
+    });
+  }
+
+  /**
+   * Clean up scene resources before shutdown/destroy
+   */
+  private _cleanup(): void {
+    // Clear all button references
+    this.buttons = [];
+
+    // Clear field references
+    this.fieldRows.clear();
+    this.fieldValueTexts.clear();
+
+    // Clear error text reference
+    this.errorText = undefined;
+
+    // Clear onboarding strip reference
+    if (this.onboardingStrip) {
+      this.onboardingStrip = undefined;
+    }
   }
 
   private _hydrateDefaults(): void {

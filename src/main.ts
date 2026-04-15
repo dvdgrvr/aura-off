@@ -15,13 +15,12 @@ import { ArenaScene } from "./game/scenes/ArenaScene";
 import { MultiplayerArenaScene } from "./game/scenes/MultiplayerArenaScene";
 import { ResultScene } from "./game/scenes/ResultScene";
 import { MobileInput } from "./game/input/MobileInput";
-
-MobileInput.init();
+import { ARENA } from "./game/config/GameConfig";
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: 1280,
-  height: 720,
+  width: ARENA.WIDTH,
+  height: ARENA.HEIGHT,
   autoRound: true,
   backgroundColor: "#1a1a2e",
   parent: "game-container",
@@ -37,9 +36,4 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [BootScene, PreloadScene, MainMenuScene, ArenaScene, MultiplayerArenaScene, ResultScene],
 };
 
-const game = new Phaser.Game(config);
-
-// Expose for debugging in development
-if (import.meta.env.DEV) {
-  (window as unknown as Record<string, unknown>).__AURA_OFF__ = game;
-}
+new Phaser.Game(config);

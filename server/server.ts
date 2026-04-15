@@ -54,6 +54,8 @@ type RoomPlayer = NetPlayerState & {
   lastInputServerMs: number;
   lastClientSendMs?: number;
   lastDisruptUseMs: number;
+  breakRecoverAtMs?: number;
+  releaseRecoverAtMs?: number;
 };
 
 type RoomState = {
@@ -271,20 +273,12 @@ function startRound(room: RoomState): void {
 
 function maybeEndRound(room: RoomState): void {
   if (room.phase !== "in_round") return;
-  const active = [...room.players.values()].filter((p) => !p.isBroken && !p.isReleased);
-  if (active.length <= 1 && room.players.size >= MIN_PLAYERS_TO_START) {
-    room.phase = "result";
-    room.activeDisruptPulses = [];
-    room.winnerPlayerId = active[0]?.id;
-    room.lastEndReason = "last_unbroken";
-    broadcast(room, { type: "round_ended", payload: { winnerPlayerId: room.winnerPlayerId, reason: "last_unbroken" } });
-    return;
-  }
+  
   if (room.timerSec <= 0) {
     room.phase = "result";
     room.activeDisruptPulses = [];
     room.lastEndReason = "timer";
-    const sorted = [...room.players.values()].sort((a, b) => b.aura - a.aura);
+    const sorted = [...room.players.values()].sort((a, b) => b.score - a.score);
     room.winnerPlayerId = sorted[0]?.id;
     broadcast(room, { type: "round_ended", payload: { winnerPlayerId: room.winnerPlayerId, reason: "timer" } });
   }
@@ -294,7 +288,20 @@ function tickRoom(room: RoomState): void {
   if (room.phase !== "in_round") return;
 
   room.timerSec = Math.max(0, room.timerSec - DT_SEC);
+  const now = Date.now();
   const players = [...room.players.values()];
+
+  for (const p of players) {
+    if (p.isBroken && p.breakRecoverAtMs && now >= p.breakRecoverAtMs) {
+      p.isBroken = false;
+      p.breakRecoverAtMs = undefined;
+    }
+    if (p.isReleased && p.releaseRecoverAtMs && now >= p.releaseRecoverAtMs) {
+      p.isReleased = false;
+      p.releaseRecoverAtMs = undefined;
+    }
+  }
+
   updateRoomCrowd(room.npcs, players, DT_SEC);
   const chargingPlayers = players.filter((p) => p.input.isCharging && !p.isBroken && !p.isReleased);
   const chargingCount = chargingPlayers.length;
@@ -420,6 +427,7 @@ function tickRoom(room: RoomState): void {
       p.isCharging = false;
       p.aura = clamp(p.aura * (1 - BREAK.AURA_LOSS_FRACTION), 0, AURA.MAX);
       p.pressure = 0;
+      p.breakRecoverAtMs = now + BREAK.HITSTOP_MS + BREAK.EMBARRASSMENT_PAUSE_MS + 1000; // Add an extra second penalty stringency.
 
       // Cascade failure: nearby players get a pressure spike.
       const cascade = applyBreakCascade(p, players);
@@ -458,6 +466,7 @@ function tickRoom(room: RoomState): void {
       p.score += Math.round(p.aura * 100);
       p.aura = 0;
       p.pressure = 0;
+      p.releaseRecoverAtMs = now + RELEASE.STRONG_SHAKE_DURATION_MS;
 
       // Release interaction: nearby players get slight pressure relief.
       const relief = applyReleaseRelief(p, players);

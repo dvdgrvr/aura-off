@@ -134,6 +134,10 @@ export class ArenaScene extends Phaser.Scene {
     // Partition into world camera (zooms) and HUD camera (fixed zoom=1).
     // Must be called LAST — after all objects are created.
     this._setupCameras();
+
+    // Set up scene lifecycle cleanup
+    this.events.once("shutdown", () => this._cleanup());
+    this.events.once("destroy", () => this._cleanup());
   }
 
   private _buildArena(): void {
@@ -218,7 +222,7 @@ export class ArenaScene extends Phaser.Scene {
     }
 
     // Release rings
-    this.releaseRing  = this.add.ellipse(W / 2, H / 2, 10, 10, 0xffffff, 0).setDepth(10);
+    this.releaseRing = this.add.ellipse(W / 2, H / 2, 10, 10, 0xffffff, 0).setDepth(10);
     this.releaseRing2 = this.add.ellipse(W / 2, H / 2, 10, 10, 0xffffff, 0).setDepth(9);
 
     // Floor pulse — glow under player that grows with aura tier
@@ -274,6 +278,7 @@ export class ArenaScene extends Phaser.Scene {
   private _startRound(): void {
     this.gameplay.startRound();
     sessionLore.startRound();
+    this.time.timeScale = 1; // Ensure time is moving normally
     this.breakLocked = false;
     this.roundEnded = false;
     this.currentZoom = CAMERA.ZOOM_DEFAULT;
@@ -355,11 +360,9 @@ export class ArenaScene extends Phaser.Scene {
 
     // Break hit-stop: brief pause to sell failure impact.
     this.time.timeScale = BREAK.HITSTOP_TIMESCALE;
-    setTimeout(() => {
-      if (this.scene.isActive("ArenaScene")) {
-        this.time.timeScale = 1;
-      }
-    }, BREAK.HITSTOP_MS);
+    this.time.delayedCall(BREAK.HITSTOP_MS, () => {
+      this.time.timeScale = 1;
+    });
 
     const p = this.player.getPosition();
     this._playImpactBurst(p.x, p.y, 0xff3344, BREAK.IMPACT_RING_RADIUS, 420);
@@ -408,11 +411,9 @@ export class ArenaScene extends Phaser.Scene {
       this._playImpactBurst(pos.x, pos.y, VISUALS.PALETTE.AURA_RELEASE, RELEASE.STRONG_SHOCKWAVE_PRIMARY * 0.68, 420);
       this.cameras.main.shake(240, 0.012);
       this.time.timeScale = VISUALS.PLAYER.PERFECT_HUSH_TIMESCALE;
-      setTimeout(() => {
-        if (this.scene.isActive("ArenaScene")) {
-          this.time.timeScale = 1;
-        }
-      }, VISUALS.PLAYER.PERFECT_HUSH_MS);
+      this.time.delayedCall(VISUALS.PLAYER.PERFECT_HUSH_MS, () => {
+        this.time.timeScale = 1;
+      });
     }
 
     this.crowd.triggerReleaseDramatic(this, pos, isStrong);
@@ -770,5 +771,41 @@ export class ArenaScene extends Phaser.Scene {
 
   private _sim(): CoreGameplaySnapshot {
     return this.gameplay.getSnapshot();
+  }
+
+  /**
+   * Clean up resources when scene shuts down
+   */
+  private _cleanup(): void {
+    // Clean up player if it exists
+    if (this.player && typeof this.player.destroy === 'function') {
+      this.player.destroy();
+    }
+
+    // Clean up crowd controller if it exists
+    // Check for any cleanup method (destroy, cleanup, etc.)
+    if (this.crowd) {
+      if (typeof (this.crowd as any).destroy === 'function') {
+        (this.crowd as any).destroy();
+      } else if (typeof (this.crowd as any).cleanup === 'function') {
+        (this.crowd as any).cleanup();
+      }
+    }
+
+    // Stop all tweens and timers
+    this.tweens.killAll();
+    this.time.removeAllEvents();
+
+    // Remove all input listeners
+    if (this.input.keyboard) {
+      this.input.keyboard.removeAllListeners();
+    }
+
+    // Don't destroy MobileInput - it's a singleton that persists for the game session
+    // Just hide mobile controls if they're visible
+    const controlsOverlay = document.getElementById("mobile-controls");
+    if (controlsOverlay) {
+      controlsOverlay.style.display = "none";
+    }
   }
 }

@@ -2,15 +2,15 @@ export class MobileInputManager {
   private static instance: MobileInputManager;
 
   public isMobile: boolean = false;
-  
+
   // Joystick State
   public stickVector = { x: 0, y: 0 };
-  
+
   // Action/Charge Button
   public chargeIsDown: boolean = false;
   public _chargeWasDown: boolean = false;
   public chargeJustUp: boolean = false;
-  
+
   // Skill Button
   public skillIsDown: boolean = false;
   public _skillWasDown: boolean = false;
@@ -20,11 +20,17 @@ export class MobileInputManager {
   private joystickNub: HTMLElement | null = null;
   private chargeBtn: HTMLElement | null = null;
   private skillBtn: HTMLElement | null = null;
-  
+
   private stickCenter = { x: 0, y: 0 };
   private stickMaxRadius = 50;
   private stickPointerId: number | null = null;
-  
+
+  // Store bound event listeners for proper removal
+  private boundPointerMove?: (e: PointerEvent) => void;
+  private boundPointerUp?: (e: PointerEvent) => void;
+  private boundPointerCancel?: (e: PointerEvent) => void;
+  private boundResize?: () => void;
+
   private constructor() {
     this.isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   }
@@ -49,17 +55,23 @@ export class MobileInputManager {
     this.chargeBtn = document.getElementById("mobile-btn-charge");
     this.skillBtn = document.getElementById("mobile-btn-skill");
 
-    window.addEventListener("resize", () => {
+    // Create bound functions for proper removal
+    this.boundResize = () => {
       if (this.joystickBase && this.stickPointerId === null) {
         this.resetJoystick();
       }
-    });
+    };
+    this.boundPointerMove = (e: PointerEvent) => this.onJoystickPointerMove(e);
+    this.boundPointerUp = (e: PointerEvent) => this.onJoystickPointerUp(e);
+    this.boundPointerCancel = (e: PointerEvent) => this.onJoystickPointerUp(e);
+
+    window.addEventListener("resize", this.boundResize);
 
     if (this.joystickBase) {
       this.joystickBase.addEventListener("pointerdown", (e) => this.onJoystickPointerDown(e));
-      window.addEventListener("pointermove", (e) => this.onJoystickPointerMove(e));
-      window.addEventListener("pointerup", (e) => this.onJoystickPointerUp(e));
-      window.addEventListener("pointercancel", (e) => this.onJoystickPointerUp(e));
+      window.addEventListener("pointermove", this.boundPointerMove);
+      window.addEventListener("pointerup", this.boundPointerUp);
+      window.addEventListener("pointercancel", this.boundPointerCancel);
     }
 
     if (this.chargeBtn) {
@@ -117,7 +129,7 @@ export class MobileInputManager {
     if (this.stickPointerId !== null) return; // Already tracking
     e.preventDefault();
     this.stickPointerId = e.pointerId;
-    
+
     // Calculate center based on base element
     const rect = this.joystickBase!.getBoundingClientRect();
     this.stickCenter = {
@@ -172,6 +184,75 @@ export class MobileInputManager {
     if (this.joystickNub) {
       this.joystickNub.style.transform = `translate(0px, 0px)`;
     }
+  }
+
+  /**
+   * Clean up all DOM event listeners and hide mobile controls.
+   * Should be called when leaving a game scene.
+   */
+  public destroy() {
+    if (!this.isMobile) return;
+
+    // Remove window event listeners using stored bound functions
+    if (this.boundResize) {
+      window.removeEventListener("resize", this.boundResize);
+    }
+
+    if (this.joystickBase) {
+      if (this.boundPointerMove) {
+        window.removeEventListener("pointermove", this.boundPointerMove);
+      }
+      if (this.boundPointerUp) {
+        window.removeEventListener("pointerup", this.boundPointerUp);
+      }
+      if (this.boundPointerCancel) {
+        window.removeEventListener("pointercancel", this.boundPointerCancel);
+      }
+    }
+
+    // Remove button event listeners by cloning elements (removes all listeners)
+    if (this.chargeBtn) {
+      this.chargeBtn.replaceWith(this.chargeBtn.cloneNode(true));
+    }
+
+    if (this.skillBtn) {
+      this.skillBtn.replaceWith(this.skillBtn.cloneNode(true));
+    }
+
+    // Hide mobile controls overlay
+    const controlsOverlay = document.getElementById("mobile-controls");
+    if (controlsOverlay) {
+      controlsOverlay.style.display = "none";
+    }
+
+    // Reset state
+    this.stickVector = { x: 0, y: 0 };
+    this.chargeIsDown = false;
+    this._chargeWasDown = false;
+    this.chargeJustUp = false;
+    this.skillIsDown = false;
+    this._skillWasDown = false;
+    this.skillJustDown = false;
+    this.stickPointerId = null;
+
+    // DON'T clear references to DOM elements - we might need to reinitialize later
+    // this.joystickBase = null;
+    // this.joystickNub = null;
+    // this.chargeBtn = null;
+    // this.skillBtn = null;
+    this.boundPointerMove = undefined;
+    this.boundPointerUp = undefined;
+    this.boundPointerCancel = undefined;
+    this.boundResize = undefined;
+  }
+
+  /**
+   * Re-initialize mobile controls after they've been destroyed.
+   * Should be called when entering a game scene that needs mobile input.
+   */
+  public reinit() {
+    if (!this.isMobile) return;
+    this.init();
   }
 }
 

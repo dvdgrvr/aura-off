@@ -8,9 +8,12 @@
 import Phaser from "phaser";
 import { ARENA } from "../config/GameConfig";
 import { RoundResult } from "../core/types";
+import { MobileInput } from "../input/MobileInput";
 
 export class ResultScene extends Phaser.Scene {
   private resultMode: "training" | "match" = "match";
+  private isTransitioning = false;
+  private failSafeTimer?: Phaser.Time.TimerEvent;
   constructor() {
     super({ key: "ResultScene" });
   }
@@ -22,6 +25,10 @@ export class ResultScene extends Phaser.Scene {
     const cx = Math.round(W / 2);
     const titleY = Math.round(H / 2 - 88);
     const scoreY = Math.round(H / 2 - 26);
+
+    // Set up scene lifecycle cleanup
+    this.events.once("shutdown", () => this._cleanup());
+    this.events.once("destroy", () => this._cleanup());
 
     this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.84).setDepth(0);
 
@@ -155,9 +162,17 @@ export class ResultScene extends Phaser.Scene {
       color: "#edf7ff",
       fontStyle: "bold",
     }).setOrigin(0.5).setResolution(2).setDepth(12);
-    bg.on("pointerover", () => bg.setFillStyle(0x2b5faa, 1));
-    bg.on("pointerout", () => bg.setFillStyle(0x1d3f76, 0.95));
-    bg.on("pointerdown", onClick);
+    bg.on("pointerover", () => {
+      if (!this.isTransitioning) bg.setFillStyle(0x2b5faa, 1);
+    });
+    bg.on("pointerout", () => {
+      if (!this.isTransitioning) bg.setFillStyle(0x1d3f76, 0.95);
+    });
+    bg.on("pointerup", () => {
+      if (this.isTransitioning) return;
+      bg.setFillStyle(0x1d3f76, 0.95);
+      onClick();
+    });
   }
 
   private _restartRound(): void {
@@ -165,6 +180,35 @@ export class ResultScene extends Phaser.Scene {
   }
 
   private _goToMenu(): void {
+    if (this.isTransitioning) return;
+    this.isTransitioning = true;
+
+    // Stop the fail-safe timer if it exists
+    if (this.failSafeTimer) {
+      this.failSafeTimer.remove();
+      this.failSafeTimer = undefined;
+    }
+
     this.scene.start("MainMenuScene");
+  }
+
+  /**
+   * Clean up all resources before scene shutdown
+   */
+  private _cleanup(): void {
+    // Remove all keyboard listeners
+    if (this.input.keyboard) {
+      this.input.keyboard.removeAllListeners();
+    }
+
+    // Stop all tweens
+    this.tweens.killAll();
+
+    // Don't destroy MobileInput - it's a singleton that persists for the game session
+    // Just hide mobile controls if they're visible
+    const controlsOverlay = document.getElementById("mobile-controls");
+    if (controlsOverlay) {
+      controlsOverlay.style.display = "none";
+    }
   }
 }

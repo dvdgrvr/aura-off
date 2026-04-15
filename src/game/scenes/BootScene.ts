@@ -7,6 +7,7 @@
  * Transitions immediately to PreloadScene for now.
  */
 import Phaser from 'phaser';
+import { MobileInput } from '../input/MobileInput';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -14,6 +15,9 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Initialize global mobile input listeners once per game lifecycle
+    MobileInput.init();
+
     // Placeholder: no setup needed yet.
     this.scene.start('PreloadScene');
   }

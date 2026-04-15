@@ -625,9 +625,10 @@ export class MultiplayerArenaScene extends Phaser.Scene {
         .setFillStyle(0xffdc8a, isLeader ? MULTIPLAYER_READABILITY.LEADER_BEACON_ALPHA : 0);
 
       if (p.isBroken) {
+        const stunWobble = Math.sin(performance.now() * 0.018) * 25; // dizzy back-and-forth wobble
         rp.avatar
           .setTint(0xff6888)
-          .setAngle(0)
+          .setAngle(stunWobble)
           .setDisplaySize(
             rp.avatarBaseSize * 1.06,
             rp.avatarBaseSize * MULTIPLAYER_READABILITY.BROKEN_SQUASH_Y
